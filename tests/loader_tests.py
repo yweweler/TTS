@@ -75,7 +75,7 @@ class TestDataset(unittest.TestCase):
         # Test for batch size 1
         dataloader = DataLoader(dataset, batch_size=1,
                                 shuffle=False, collate_fn=dataset.collate_fn,
-                                drop_last=True, num_workers=c.num_loader_workers)
+                                drop_last=False, num_workers=c.num_loader_workers)
 
         for i, data in enumerate(dataloader):
             if i == self.max_loader_iter:
@@ -90,7 +90,7 @@ class TestDataset(unittest.TestCase):
 
             # check the last time step to be zero padded
             assert mel_input[0, -1].sum() == 0
-            assert mel_input[0, -2].sum() != 0
+            assert mel_input[0, -2].sum() != 0, print(stop_target)
             assert linear_input[0, -1].sum() == 0
             assert linear_input[0, -2].sum() != 0
             assert stop_target[0, -1] == 1

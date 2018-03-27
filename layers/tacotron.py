@@ -4,7 +4,6 @@ from torch.autograd import Variable
 from torch import nn
 
 from .attention import AttentionRNN
-from .attention import get_mask_from_lengths
 
 class Prenet(nn.Module):
     r""" Prenet as explained at https://arxiv.org/abs/1703.10135.

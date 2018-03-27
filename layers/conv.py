@@ -2,14 +2,11 @@
 import torch
 from torch.autograd import Variable
 from torch import nn
+from TTS.utils.text.symbols import symbols
 
 
 class Conv1dBlock(nn.Module):
-    """CBHG module: a recurrent neural network composed of:
-        - 1-d convolution banks
-        - Highway networks + residual connections
-        - Bidirectional gated recurrent units
-
+    """
         Args:
             in_features (int): sample size
             K (int): max filter size in conv bank
@@ -79,10 +76,16 @@ class Conv1dBank(nn.Module):
         return x
         
 
+class MemoryBuffer(nn.Module):
+    
+    
 class Encoder(nn.Module):
-    def __init__(self, in_features):
+    def __init__(self, vocab_size, embed_dim):
         super(Encoder, self).__init__()
-        self.conv_bank = Conv1dBank(in_features, in_features, in_features,
+        self.embedding = nn.Embedding(vocab_size,
+                                      embed_dim,
+                                      max_norm=1.0)
+        self.conv_bank = Conv1dBank(embed_dim, in_features, in_features,
                                     kernel_sizes=[5, 3, 3, 3], dilations=[1, 2, 4, 8])
 
     def forward(self, inputs):
@@ -94,26 +97,16 @@ class Encoder(nn.Module):
             - inputs: batch x time x in_features
             - outputs: batch x time x 128*2
         """
-        return self.conv_bank(inputs)
+        out = self.embedding(inputs)
+        out = self.conv_bank(out)
+        return out
     
 
-# class StopProjection(nn.Module):
-#     r""" Simple projection layer to predict the "stop token"
-
-#     Args:
-#         in_features (int): size of the input vector
-#         out_features (int or list): size of each output vector. aka number
-#             of predicted frames.
-#     """  
-
-#     def __init__(self, in_features, out_features):
-#         super(StopProjection, self).__init__()
-#         self.linear = nn.Linear(in_features, out_features)
-#         self.dropout = nn.Dropout(0.5)
-#         self.sigmoid = nn.Sigmoid()
     
-#     def forward(self, inputs):
-#         out = self.dropout(inputs)
-#         out = self.linear(out)
-#         out = self.sigmoid(out)
-#         return out
+    
+class Decoder(nn.Module):
+    def __init__(self):
+        
+    def forward(self, inputs)
+
+

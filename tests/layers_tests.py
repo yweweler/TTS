@@ -2,6 +2,7 @@ import unittest
 import torch as T
 
 from TTS.layers.tacotron import Prenet, CBHG, Decoder, Encoder
+from TTS.layers.attention import AttentionLayer
 from layers.losses import L1LossMasked, _sequence_mask
 
 
@@ -82,3 +83,17 @@ class L1LossMaskedTests(unittest.TestCase):
         mask = ((_sequence_mask(dummy_length).float() - 1.0) * 100.0).unsqueeze(2)
         output = layer(dummy_input + mask, dummy_target, dummy_length)
         assert output.data[0] == 1.0, "1.0 vs {}".format(output.data[0])
+        
+        
+class AttentionLayerTests(unittest.TestCase):
+
+    def test_in_out(self):
+        layer = AttentionLayer(32, 64, 96)
+        dummy_annot = T.autograd.Variable(T.rand(4, 8, 64))
+        dummy_query = T.autograd.Variable(T.rand(4, 15, 96))
+
+        output, alignment = layer(dummy_annot, dummy_query)
+        
+        assert output.shape[0] == 4
+        assert output.shape[1] == 1, "size not {}".format(output.shape[1])
+        assert output.shape[2] == 80 * 2, "size not {}".format(output.shape[2])
