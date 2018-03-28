@@ -3,6 +3,7 @@ import torch
 from torch.autograd import Variable
 from torch import nn
 from TTS.utils.text.symbols import symbols
+from TTS.layers.attention import AttentionLayer
 
 
 class Conv1dBlock(nn.Module):
@@ -58,10 +59,13 @@ class Conv1dBank(nn.Module):
         self.blocks = []
         for i, dil in enumerate(dilations):
             kernel_size = kernel_sizes[i]
-            if i == 0:
+            if i+1 == len(dilations):
+                if len(dilations) == 1:
+                    self.blocks.append(Conv1dBlock(in_features, out_features, self.hidden_features, kernel_size=kernel_size, dilation=dil))
+                else:
+                    self.blocks.append(Conv1dBlock(hidden_features, out_features, self.hidden_features, kernel_size=kernel_size, dilation=dil))
+            elif i == 0:
                 self.blocks.append(Conv1dBlock(in_features, self.hidden_features, self.hidden_features, kernel_size=kernel_size, dilation=dil))
-            elif i == len(dilations)-1:
-                self.block2 = Conv1dBlock(in_features, out_features, self.hidden_features, kernel_size=kernel_size, dilation=dil)
             else:
                 self.blocks.append(Conv1dBlock(self.hidden_features, self.hidden_features, self.hidden_features, kernel_size=kernel_size, dilation=dil))
         self.blocks = nn.ModuleList(self.blocks)
@@ -73,19 +77,16 @@ class Conv1dBank(nn.Module):
         for block in self.blocks:
             x = block(x)
         x = x.transpose(1, 2)
-        return x
+        return x.contiguous()
         
 
-class MemoryBuffer(nn.Module):
-    
-    
-class Encoder(nn.Module):
-    def __init__(self, vocab_size, embed_dim):
-        super(Encoder, self).__init__()
+class EncoderConv(nn.Module):
+    def __init__(self, vocab_size, embed_dim, out_dim, hidden_dim):
+        super(EncoderConv, self).__init__()
         self.embedding = nn.Embedding(vocab_size,
                                       embed_dim,
                                       max_norm=1.0)
-        self.conv_bank = Conv1dBank(embed_dim, in_features, in_features,
+        self.conv_bank = Conv1dBank(embed_dim, out_dim, hidden_dim,
                                     kernel_sizes=[5, 3, 3, 3], dilations=[1, 2, 4, 8])
 
     def forward(self, inputs):
@@ -102,11 +103,87 @@ class Encoder(nn.Module):
         return out
     
 
-    
-    
-class Decoder(nn.Module):
-    def __init__(self):
+class DecoderConvWithBuffer(nn.Module):
+    def __init__(self, in_dim, out_dim, hidden_dim, buffer_len=17, memory_dim=80):
+        super(DecoderConvWithBuffer, self).__init__()
+        self.in_dim = in_dim
+        self.out_dim = out_dim
+        self.hidden_dim = hidden_dim
+        self.buffer_dim = in_dim + memory_dim
+        self.buffer_len = buffer_len
+        self.buffer_size = buffer_len * self.buffer_dim
+        self.memory_dim = memory_dim
         
-    def forward(self, inputs)
+        self.buffer_proj_linear = self._get_linear(self.buffer_size, self.buffer_dim)
+        self.memory_proj_linear = self._get_linear(out_dim, memory_dim)
+        self.attention = AttentionLayer(hidden_dim, in_dim, self.buffer_size)
+        self.conv_layer = Conv1dBank(self.buffer_dim, hidden_dim, hidden_dim,
+                                    kernel_sizes=[5, 3, 3], dilations=[1, 2, 4])  ## Receptive field 17
+        self.out_layer = nn.Linear(self.hidden_dim * buffer_len, out_dim)
+
+    def _get_linear(self, dim_in, dim_out):
+        return nn.Sequential(nn.Linear(dim_in, int(dim_in/10)),
+                             nn.ReLU(),
+                             nn.Linear(int(dim_in/10), dim_out))
+
+    def _init_buffer(self, inputs):
+        batch_size = inputs.shape[0]
+        self.buffer = Variable(inputs.data.new(batch_size, self.buffer_len, self.buffer_dim).zero_())
+        # TODO: init buffer with speaker indentity once we have it in action.
+        
+    def _update_buffer(self, buffer, context, memory):
+        z = torch.cat([context, memory], 1)  ## VL paper uses memory/30 for no reason 
+        z = z.unsqueeze(1)
+        z = torch.cat([z, self.buffer[:, :-1, :]], 1)
+        u = self.buffer_proj_linear(z.view(z.shape[0], -1))
+        self.buffer = torch.cat([u.unsqueeze(1), self.buffer[:, :-1, :]], 1)
+        
+    def forward(self, inputs, targets):
+        greedy = not self.training
+        assert (targets.size(1) * targets.size(2)) % self.out_dim == 0
+        if targets.size(1) * targets.size(2) != self.out_dim:
+            divisor = int((targets.size(1) * targets.size(2) / self.out_dim))
+            targets = targets.view(targets.size(0), divisor, -1)
+        # T x B x D
+        targets = targets.transpose(0, 1)
+        T_decoder = targets.shape[0]
+        outputs, attns = [], []
+        memory = Variable(inputs.data.new(inputs.shape[0], targets.shape[2]).zero_()).contiguous()
+        self._init_buffer(inputs)
+        t = 0
+        while True:
+            if t > 0:
+                if greedy:
+                    memory = outputs[-1].contiguous()
+                else:
+                    memory = targets[t-1].contiguous()
+            # print(memory.shape)
+            memory = self.memory_proj_linear(memory.view(memory.shape[0], -1))
+            context, attn = self.attention(inputs, self.buffer.view(inputs.shape[0], -1))
+            self._update_buffer(self.buffer, context, memory.view(inputs.shape[0], -1))
+            output = self.conv_layer(self.buffer)
+            output = self.out_layer(output.view(output.shape[0], -1))
+            outputs += [output]
+            attns += [attn]
+            t += 1
+            if (not greedy and self.training) or (greedy and memory is not None):
+                if t >= T_decoder:
+                    break
+            else:
+                if t > 1 and is_end_of_frames(output, self.eps):
+                    break
+                elif t > self.max_decoder_steps:
+                    print(" !! Decoder stopped with 'max_decoder_steps'. \
+                          Something is probably wrong.")
+                    break                           
+        assert greedy or len(outputs) == T_decoder
+        # Back to batch first
+        attns = torch.stack(attns).transpose(0, 1).contiguous()
+        outputs = torch.stack(outputs).transpose(0, 1).contiguous()
+        return outputs, attns
+
+            
+                
+        
 
 

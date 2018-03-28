@@ -65,18 +65,17 @@ class AttentionRNN(nn.Module):
 class AttentionLayer(nn.Module):
     def __init__(self, hidden_dim, annot_dim, query_dim):
         super(AttentionLayer, self).__init__()
-        self.query_proj = nn.Linear(query_dim, hidden_dim)
-        self.alignment_model = BahdanauAttention(annot_dim, hidden_dim, hidden_dim)
+        self.alignment_model = BahdanauAttention(annot_dim, query_dim, hidden_dim)
 
     def forward(self, annotations, query):
         # Feed it to RNN
         # s_i = f(y_{i-1}, c_{i}, s_{i-1})
-        s = self.query_proj(query)
+        # s = self.query_proj(query)
 
         # Alignment
         # (batch, max_time)
         # e_{ij} = a(s_{i-1}, h_j)
-        alignment = self.alignment_model(annotations, s)
+        alignment = self.alignment_model(annotations, query)
 
         # Normalize context weight
         alignment = F.softmax(alignment, dim=-1)
@@ -86,8 +85,5 @@ class AttentionLayer(nn.Module):
         # c_i = \sum_{j=1}^{T_x} \alpha_{ij} h_j
         context = torch.bmm(alignment.unsqueeze(1), annotations)
         context = context.squeeze(1)
-        return rnn_output, context, alignment
-
-        return a, attn_scores
-
+        return context, alignment
 

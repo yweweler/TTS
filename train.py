@@ -25,7 +25,7 @@ from utils.generic_utils import (Progbar, remove_experiment_folder,
 from utils.model import get_param_size
 from utils.visual import plot_alignment, plot_spectrogram
 from datasets.LJSpeech import LJSpeechDataset
-from models.tacotron import Tacotron
+from models.voiceloopconv import VoiceLoopConv
 from layers.losses import L1LossMasked
 
 
@@ -331,11 +331,10 @@ def main(args):
                             drop_last=False, num_workers= 4,
                             pin_memory=True)
 
-    model = Tacotron(c.embedding_size,
-                     c.hidden_size,
-                     c.num_mels,
-                     c.num_freq,
-                     c.r)
+    model = VoiceLoopConv(embedding_dim=c.embedding_size,
+                          linear_dim=c.num_freq,
+                          mel_dim=c.num_mels, 
+                          r=c.r)
 
     optimizer = optim.Adam(model.parameters(), lr=c.lr)
     
