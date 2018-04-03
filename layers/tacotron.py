@@ -5,6 +5,7 @@ from torch import nn
 
 from .attention import AttentionRNN
 
+
 class Prenet(nn.Module):
     r""" Prenet as explained at https://arxiv.org/abs/1703.10135.
     It creates as many layers as given by 'out_features'
@@ -13,7 +14,7 @@ class Prenet(nn.Module):
         in_features (int): size of the input vector
         out_features (int or list): size of each output sample.
             If it is a list, for each value, there is created a new layer.  
-    """  
+    """
 
     def __init__(self, in_features, out_features=[256, 128]):
         super(Prenet, self).__init__()
@@ -59,7 +60,7 @@ class BatchNormConv1d(nn.Module):
         self.activation = activation
 
     def forward(self, x):
-        x = self.conv1d(x) 
+        x = self.conv1d(x)
         if self.activation is not None:
             x = self.activation(x)
         return self.bn(x)
@@ -115,7 +116,7 @@ class CBHG(nn.Module):
         self.max_pool1d = nn.MaxPool1d(kernel_size=2, stride=1, padding=1)
 
         out_features = [K * in_features] + projections[:-1]
-        activations = [self.relu] * (len(projections) - 1) 
+        activations = [self.relu] * (len(projections) - 1)
         activations += [None]
 
         # setup conv1d projection layers
@@ -178,7 +179,7 @@ class CBHG(nn.Module):
 
         # (B, T_in, in_features*2)
         # TODO: replace GRU with convolution as in Deep Voice 3
-        self.gru.flatten_parameters() 
+        self.gru.flatten_parameters()
         outputs, _ = self.gru(x)
         return outputs
 
@@ -213,6 +214,7 @@ class Decoder(nn.Module):
         r (int): number of outputs per time step.
         eps (float): threshold for detecting the end of a sentence.
     """
+
     def __init__(self, in_features, memory_dim, r, eps=0.05, mode='train'):
         super(Decoder, self).__init__()
         self.mode = mode
@@ -255,12 +257,12 @@ class Decoder(nn.Module):
         greedy = not self.training
 
         if memory is not None:
-            
+
             # Grouping multiple frames if necessary
             if memory.size(-1) == self.memory_dim:
                 memory = memory.view(B, memory.size(1) // self.r, -1)
                 " !! Dimension mismatch {} vs {} * {}".format(memory.size(-1),
-                                                         self.memory_dim, self.r)
+                                                              self.memory_dim, self.r)
             T_decoder = memory.size(1)
 
         # go frame - 0 frames tarting the sequence
@@ -315,9 +317,8 @@ class Decoder(nn.Module):
                     decoder_input, decoder_rnn_hiddens[idx])
                 # Residual connectinon
                 decoder_input = decoder_rnn_hiddens[idx] + decoder_input
-            
+
             output = decoder_input
-            
 
             # predict mel vectors from decoder vectors
             output = self.proj_to_mel(output)
@@ -337,7 +338,7 @@ class Decoder(nn.Module):
                     print(" !! Decoder stopped with 'max_decoder_steps'. \
                           Something is probably wrong.")
                     break
-                           
+
         assert greedy or len(outputs) == T_decoder
 
         # Back to batch first
@@ -347,5 +348,5 @@ class Decoder(nn.Module):
         return outputs, alignments
 
 
-def is_end_of_frames(output, eps=0.2): #0.2
+def is_end_of_frames(output, eps=0.2):  # 0.2
     return (output.data <= eps).all()

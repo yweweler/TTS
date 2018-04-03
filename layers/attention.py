@@ -25,7 +25,8 @@ class BahdanauAttention(nn.Module):
         processed_annots = self.annot_layer(annots)
 
         # (batch, max_time, 1)
-        alignment = self.v(nn.functional.tanh(processed_query + processed_annots))
+        alignment = self.v(nn.functional.tanh(
+            processed_query + processed_annots))
 
         # (batch, max_time)
         return alignment.squeeze(-1)
@@ -35,13 +36,14 @@ class AttentionRNN(nn.Module):
     def __init__(self, hidden_dim, annot_dim, memory_dim):
         super(AttentionRNN, self).__init__()
         self.rnn_cell = nn.GRUCell(hidden_dim + memory_dim, hidden_dim)
-        self.alignment_model = BahdanauAttention(annot_dim, hidden_dim, hidden_dim)
+        self.alignment_model = BahdanauAttention(
+            annot_dim, hidden_dim, hidden_dim)
 
     def forward(self, memory, context, rnn_state, annotations):
         # Concat input query and previous context context
         rnn_input = torch.cat((memory, context), -1)
         #rnn_input = rnn_input.unsqueeze(1)
-        
+
         # Feed it to RNN
         # s_i = f(y_{i-1}, c_{i}, s_{i-1})
         rnn_output = self.rnn_cell(rnn_input, rnn_state)
@@ -61,11 +63,12 @@ class AttentionRNN(nn.Module):
         context = context.squeeze(1)
         return rnn_output, context, alignment
 
-    
+
 class AttentionLayer(nn.Module):
     def __init__(self, hidden_dim, annot_dim, query_dim):
         super(AttentionLayer, self).__init__()
-        self.alignment_model = BahdanauAttention(annot_dim, query_dim, hidden_dim)
+        self.alignment_model = BahdanauAttention(
+            annot_dim, query_dim, hidden_dim)
 
     def forward(self, annotations, query):
         # Feed it to RNN
@@ -86,4 +89,3 @@ class AttentionLayer(nn.Module):
         context = torch.bmm(alignment.unsqueeze(1), annotations)
         context = context.squeeze(1)
         return context, alignment
-
