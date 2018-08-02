@@ -1,8 +1,9 @@
-librosa
-inflect
-unidecode
+librosa==0.5.1
+inflect==0.2.5
+unidecode==0.4.20
 tensorboard
 tensorboardX
 torch
 matplotlib
-Pillow
+numpy==1.14.3
+scipy==0.19.0
