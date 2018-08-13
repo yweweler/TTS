@@ -212,10 +212,10 @@ class EncoderCBHG(nn.Module):
         self.cbhg = CBHG(
             128,
             K=16,
-            conv_bank_features=128,
-            conv_projections=[128, 128],
-            highway_features=128,
-            gru_features=128,
+            conv_bank_features=256,
+            conv_projections=[256, 256],
+            highway_features=256,
+            gru_features=256,
             num_highways=4)
 
     def forward(self, x):
@@ -249,10 +249,10 @@ class PostCBHG(nn.Module):
         self.cbhg = CBHG(
             mel_dim,
             K=8,
-            conv_bank_features=128,
-            conv_projections=[256, mel_dim],
-            highway_features=128,
-            gru_features=128,
+            conv_bank_features=256,
+            conv_projections=[512, mel_dim],
+            highway_features=256,
+            gru_features=256,
             num_highways=4)
     def forward(self, x):
         return self.cbhg(x)
