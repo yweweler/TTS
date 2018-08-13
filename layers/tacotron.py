@@ -213,7 +213,7 @@ class EncoderCBHG(nn.Module):
             128,
             K=16,
             conv_bank_features=256,
-            conv_projections=[256, 256],
+            conv_projections=[256, 128],
             highway_features=256,
             gru_features=256,
             num_highways=4)
@@ -250,7 +250,7 @@ class PostCBHG(nn.Module):
             mel_dim,
             K=8,
             conv_bank_features=256,
-            conv_projections=[256, 256],
+            conv_projections=[512, mel_dim],
             highway_features=256,
             gru_features=256,
             num_highways=4)

@@ -21,7 +21,7 @@ class Tacotron(nn.Module):
         print(" | > Number of characters : {}".format(len(symbols)))
         self.embedding.weight.data.normal_(0, 0.3)
         self.encoder = Encoder(embedding_dim)
-        self.decoder = Decoder(256, mel_dim, r)
+        self.decoder = Decoder(512, mel_dim, r)
         self.postnet = PostCBHG(mel_dim)
         self.last_linear = nn.Linear(self.postnet.cbhg.gru_features * 2, linear_dim)
 
