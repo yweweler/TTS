@@ -250,7 +250,7 @@ class PostCBHG(nn.Module):
             mel_dim,
             K=8,
             conv_bank_features=256,
-            conv_projections=[512, mel_dim],
+            conv_projections=[256, 256],
             highway_features=256,
             gru_features=256,
             num_highways=4)
