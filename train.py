@@ -419,7 +419,7 @@ def main(args):
             criterion.cuda()
             criterion_st.cuda()
 
-    scheduler = AnnealLR(optimizer, warmup_steps=c.warmup_steps)
+    scheduler = AnnealLR(optimizer, warmup_steps=c.warmup_steps, last_epoch=args.restore_step)
     num_params = count_parameters(model)
     print(" | > Model has {} parameters".format(num_params), flush=True)
 
@@ -439,7 +439,7 @@ def main(args):
             " | > Train Loss: {:.5f}   Validation Loss: {:.5f}".format(
                 train_loss, val_loss),
             flush=True)
-        best_loss = save_best_model(model, optimizer, train_loss, best_loss,
+        best_loss = save_best_model(model, optimizer, optimizer_st, train_loss, best_loss,
                                     OUT_PATH, current_step, epoch)
 
 
