@@ -19,8 +19,6 @@ class AudioProcessor(object):
                  num_freq,
                  power,
                  preemphasis,
-                 min_mel_freq,
-                 max_mel_freq,
                  griffin_lim_iters=None):
 
         print(" > Setting up Audio Processor...")
@@ -33,8 +31,6 @@ class AudioProcessor(object):
         self.num_freq = num_freq
         self.power = power
         self.preemphasis = preemphasis
-        self.min_mel_freq = min_mel_freq
-        self.max_mel_freq = max_mel_freq
         self.griffin_lim_iters = griffin_lim_iters
         self.n_fft, self.hop_length, self.win_length = self._stft_parameters()
         if preemphasis == 0:
@@ -54,7 +50,6 @@ class AudioProcessor(object):
         n_fft = (self.num_freq - 1) * 2
         return librosa.filters.mel(
             self.sample_rate, n_fft, n_mels=self.num_mels)
-        #    fmin=self.min_mel_freq, fmax=self.max_mel_freq)
 
     def _normalize(self, S):
         return np.clip((S - self.min_level_db) / -self.min_level_db, 0, 1)
