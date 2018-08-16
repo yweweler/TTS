@@ -1,6 +1,6 @@
 {
-    "model_name": "TTS-2xlarger",
-    "model_description": "X2 larger model compared to the paper version",
+    "model_name": "TTS-lstm",
+    "model_description": "baseline model GRU layers replaced with LSTM",
     "audio_processor": "audio",
     "num_mels": 80,
     "num_freq": 1025,
