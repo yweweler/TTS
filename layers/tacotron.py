@@ -113,13 +113,13 @@ class CBHG(nn.Module):
                  conv_bank_features=128,
                  conv_projections=[128, 128],
                  highway_features=128,
-                 gru_features=128,
+                 rnn_features=128,
                  num_highways=4):
         super(CBHG, self).__init__()
         self.in_features = in_features
         self.conv_bank_features = conv_bank_features
         self.highway_features = highway_features
-        self.gru_features = gru_features
+        self.rnn_features = rnn_features
         self.conv_projections = conv_projections
         self.relu = nn.ReLU()
         # list of conv1d bank with filter size k=1...K
@@ -161,9 +161,9 @@ class CBHG(nn.Module):
             for _ in range(num_highways)
         ])
         # bi-directional GPU layer
-        self.gru = nn.GRU(
-            gru_features,
-            gru_features,
+        self.lstm = nn.LSTM(
+            rnn_features,
+            rnn_features,
             1,
             batch_first=True,
             bidirectional=True)
@@ -201,8 +201,8 @@ class CBHG(nn.Module):
             x = highway(x)
         # (B, T_in, hid_features*2)
         # TODO: replace GRU with convolution as in Deep Voice 3
-        self.gru.flatten_parameters()
-        outputs, _ = self.gru(x)
+        self.lstm.flatten_parameters()
+        outputs, _, _ = self.lstm(x)
         return outputs
 
 
@@ -212,10 +212,10 @@ class EncoderCBHG(nn.Module):
         self.cbhg = CBHG(
             128,
             K=16,
-            conv_bank_features=256,
-            conv_projections=[256, 128],
-            highway_features=256,
-            gru_features=256,
+            conv_bank_features=128,
+            conv_projections=[128, 128],
+            highway_features=128,
+            rnn_features=128,
             num_highways=4)
 
     def forward(self, x):
@@ -249,10 +249,10 @@ class PostCBHG(nn.Module):
         self.cbhg = CBHG(
             mel_dim,
             K=8,
-            conv_bank_features=256,
-            conv_projections=[512, mel_dim],
-            highway_features=256,
-            gru_features=256,
+            conv_bank_features=80,
+            conv_projections=[160, mel_dim],
+            highway_features=80,
+            rnn_features=80,
             num_highways=4)
     def forward(self, x):
         return self.cbhg(x)
@@ -286,7 +286,7 @@ class Decoder(nn.Module):
         self.project_to_decoder_in = nn.Linear(256 + in_features, 256)
         # decoder_RNN_input -> |RNN| -> RNN_state
         self.decoder_rnns = nn.ModuleList(
-            [nn.GRUCell(256, 256) for _ in range(2)])
+            [nn.LSTMCell(256, 256) for _ in range(2)])
         # RNN_state -> |Linear| -> mel_spec
         self.proj_to_mel = nn.Linear(256, memory_dim * r)
         self.stopnet = StopNet(r, memory_dim)
@@ -328,6 +328,10 @@ class Decoder(nn.Module):
             inputs.data.new(B, 256).zero_()
             for _ in range(len(self.decoder_rnns))
         ]
+        decoder_rnn_cells = [
+            inputs.data.new(B, 256).zero_()
+            for _ in range(len(self.decoder_rnns))
+        ]
         current_context_vec = inputs.data.new(B, self.in_features).zero_()
         stopnet_rnn_hidden = inputs.data.new(B,
                                              self.r * self.memory_dim).zero_()
@@ -362,8 +366,8 @@ class Decoder(nn.Module):
                 torch.cat((attention_rnn_hidden, current_context_vec), -1))
             # Pass through the decoder RNNs
             for idx in range(len(self.decoder_rnns)):
-                decoder_rnn_hiddens[idx] = self.decoder_rnns[idx](
-                    decoder_input, decoder_rnn_hiddens[idx])
+                decoder_rnn_hiddens[idx], decoder_rnn_cells[idx] = self.decoder_rnns[idx](
+                    decoder_input, (decoder_rnn_hiddens[idx], decoder_rnn_cells[idx]))
                 # Residual connectinon
                 decoder_input = decoder_rnn_hiddens[idx] + decoder_input
             decoder_output = decoder_input
@@ -413,7 +417,7 @@ class StopNet(nn.Module):
             memory_dim (int): single feature dim of a single network output frame.
         """
         super(StopNet, self).__init__()
-        self.rnn = nn.GRUCell(memory_dim * r, memory_dim * r)
+        self.rnn = nn.LSTMCell(memory_dim * r, memory_dim * r)
         self.relu = nn.ReLU()
         self.linear = nn.Linear(r * memory_dim, 1)
         self.sigmoid = nn.Sigmoid()
