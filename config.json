@@ -1,6 +1,6 @@
 {
-    "model_name": "TTS-mel_spec",
-    "model_description": "Predict only mel spectrogram with r=2 and larger batch size on 8 gpus",
+    "model_name": "TTS-mel_spec-r=2",
+    "model_description": "Predict only mel spectrogram with r=2",
 
     "audio":{
         "audio_processor": "audio",
@@ -11,22 +11,19 @@
         "frame_shift_ms": 12.5,
         "preemphasis": 0.0,
         "min_level_db": -100,
-        "ref_level_db": 20
+        "ref_level_db": 20,
+        "power": 1.5,
+        "griffin_lim_iters": 60 
     },
 
     "embedding_size": 256,
     "text_cleaner": "english_cleaners",
     "epochs": 1000,
-    "lr_decay": 0.5,
-    "decay_step": 100000,
     "lr": 0.001,
-    "warmup_steps": 2000,
-    "batch_size": 64,
+    "warmup_steps": 1000,
+    "batch_size": 128,
     "eval_batch_size":32,
     "r": 2,
-    "griffin_lim_iters": 60,
-    "power": 1.5,
-    "bdw": 0.05,
     "wd": 0.000001,
     "checkpoint": true,
     "save_step": 25000,
@@ -39,5 +36,5 @@
     "dataset": "tts_cache",
     "min_seq_len": 0,
     "output_path": "../keep/",
-    "num_loader_workers": 4
+    "num_loader_workers": 28
 }
