@@ -276,7 +276,7 @@ class Decoder(nn.Module):
         super(Decoder, self).__init__()
         self.r = r
         self.in_features = in_features
-        self.max_decoder_steps = 200
+        self.max_decoder_steps = 500
         self.memory_dim = memory_dim
         # memory -> |Prenet| -> processed_memory
         self.prenet = Prenet(memory_dim * r, out_features=[256, 128])
@@ -349,7 +349,7 @@ class Decoder(nn.Module):
         memory_input = initial_memory
         while True:
             if t > 0:
-                if greedy and memory is None:
+                if memory is None:
                     memory_input = outputs[-1]
                 else:
                     memory_input = memory[t - 1]
@@ -383,8 +383,7 @@ class Decoder(nn.Module):
             attentions += [attention]
             stop_tokens += [stop_token]
             t += 1
-            if (not greedy and self.training) or (greedy
-                                                  and memory is not None):
+            if memory is not None:
                 if t >= T_decoder:
                     break
             else:
@@ -393,7 +392,7 @@ class Decoder(nn.Module):
                 elif t > self.max_decoder_steps:
                     print("   | > Decoder stopped with 'max_decoder_steps")
                     break
-        assert greedy or len(outputs) == T_decoder
+        # assert greedy or len(outputs) == T_decoder
         # Back to batch first
         attentions = torch.stack(attentions).transpose(0, 1)
         outputs = torch.stack(outputs).transpose(0, 1).contiguous()
