@@ -291,26 +291,24 @@ class Decoder(nn.Module):
                 else:
                     memory_input = memory[t - 1]
             # Prenet
-            print("M<emry -> ", memory_input.shape)
             processed_memory = self.prenet(memory_input)
             # Attention RNN
             attention_cat = torch.cat(
                 (attention.unsqueeze(1), attention_cum.unsqueeze(1)), dim=1)
-            attention_rnn_state, current_context_vec, attention = self.attention_rnn(
+            attention_rnn_states, current_context_vec, attention = self.attention_rnn(
                 processed_memory, current_context_vec, attention_rnn_states,
                 inputs, attention_cat, mask)
             attention_cum += attention
+            attention_rnn_output = attention_rnn_states[0]
             # Concat RNN output and attention context vector
-            decoder_rnn_input = torch.cat((attention_rnn_state[0], current_context_vec), -1)
+            decoder_rnn_input = torch.cat((attention_rnn_output, current_context_vec), -1)
             # Pass through the decoder RNNs
             decoder_rnn_states = self.decoder_rnn(decoder_rnn_input, decoder_rnn_states)
             decoder_output = decoder_rnn_states[0]
             # predict mel vectors from decoder vectors
             decoder_proj_input = torch.cat(
-                (decoder_rnn_states[0], current_context_vec), dim=1)
+                (decoder_output, current_context_vec), dim=1)
             output = self.proj_to_mel(decoder_proj_input)
-            # output = torch.sigmoid(output)
-            stop_input = output
             # predict stop token
             stop_token = self.stopnet(decoder_proj_input)
             outputs += [output]

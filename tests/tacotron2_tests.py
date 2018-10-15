@@ -20,11 +20,10 @@ c = load_config(os.path.join(file_path, 'test_config.json'))
 
 class Tacotron2TrainTest(unittest.TestCase):
     def test_train_step(self):
-        input = torch.randint(0, 24, (2, 128)).long().to(device)
-        mel_spec = torch.rand(2, 30, c.num_mels).to(device)
-        linear_spec = torch.rand(2, 30, c.num_freq).to(device)
-        mel_lengths = torch.randint(20, 30, (2, )).long().to(device)
-        stop_targets = torch.zeros(2, 30, 1).float().to(device)
+        input = torch.randint(0, 24, (8, 128)).long().to(device)
+        mel_spec = torch.rand(8, 30, c.num_mels).to(device)
+        mel_lengths = torch.randint(20, 30, (8, )).long().to(device)
+        stop_targets = torch.zeros(8, 30, 1).float().to(device)
 
         for idx in mel_lengths:
             stop_targets[:, int(idx.item()):, 0] = 1.0
@@ -38,15 +37,16 @@ class Tacotron2TrainTest(unittest.TestCase):
         model = Tacotron2(c.embedding_size, c.num_mels,
                          c.r).to(device)
         model.train()
-        print(model)
+
         model_ref = copy.deepcopy(model)
         count = 0
         for param, param_ref in zip(model.parameters(),
                                     model_ref.parameters()):
             assert (param - param_ref).sum() == 0, param
             count += 1
-        optimizer = optim.Adam(model.parameters(), lr=c.lr)
-        for i in range(5):
+
+        optimizer = optim.Adam(model.parameters(), lr=0.1)
+        for i in range(10):
             mel_out, align, stop_tokens = model.forward(
                 input, mel_spec)
             assert stop_tokens.data.max() <= 1.0
@@ -57,11 +57,12 @@ class Tacotron2TrainTest(unittest.TestCase):
             loss += stop_loss
             loss.backward()
             optimizer.step()
+            
         # check parameter changes
         count = 0
         for param, param_ref in zip(model.parameters(),
                                     model_ref.parameters()):
             assert (param != param_ref).any(
-            ), "param {} with shape {} not updated!! \n{}\n{}".format(
-                count, param.shape, param, param_ref)
+            ), "param {} with shape {} not updated!! \n{}\n{}\n{}".format(
+                count, param.shape, param, param_ref, (param - param_ref).sum())
             count += 1

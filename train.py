@@ -18,7 +18,7 @@ from utils.generic_utils import (
     save_checkpoint, save_best_model, load_config, lr_decay, count_parameters,
     check_update, get_commit_hash, sequence_mask, AnnealLR)
 from utils.visual import plot_alignment, plot_spectrogram
-from models.tacotron import Tacotron
+from models.tacotron2 import Tacotron2
 from layers.losses import L1LossMasked
 from utils.audio import AudioProcessor
 
@@ -319,7 +319,7 @@ def main(args):
     else:
         val_loader = None
 
-    model = Tacotron(c.embedding_size, ap.num_freq, ap.num_mels, c.r)
+    model = Tacotron2(c.embedding_size, ap.num_freq, ap.num_mels, c.r)
     print(" | > Num output units : {}".format(ap.num_freq), flush=True)
 
     optimizer = optim.Adam(model.parameters(), lr=c.lr, weight_decay=0)
