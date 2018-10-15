@@ -68,10 +68,10 @@ class AudioProcessor(object):
         return n_fft, hop_length, win_length
 
     def _amp_to_db(self, x):
-        return 20 * np.log10(np.maximum(1e-5, x))
+        return np.log(np.maximum(1e-5, x))
 
     def _db_to_amp(self, x):
-        return np.power(10.0, x * 0.05)
+        return np.exp(x)
 
     def apply_preemphasis(self, x):
         if self.preemphasis == 0:
@@ -101,7 +101,7 @@ class AudioProcessor(object):
     def melspectrogram(self, y):
         D = self._stft(y)
         S = self._amp_to_db(self._linear_to_mel(np.abs(D)))
-        return self._normalize(S)
+        return S
 
     def _stft(self, y):
         return librosa.stft(
