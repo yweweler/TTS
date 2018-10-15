@@ -43,6 +43,7 @@ class LocationSensitiveAttention(nn.Module):
         self.kernel_size = kernel_size
         self.filters = filters
         padding = [(kernel_size - 1) // 2, (kernel_size - 1) // 2]
+        # TODO: test this padding
         self.loc_conv = nn.Sequential(
             nn.ConstantPad1d(padding, 0),
             nn.Conv1d(
@@ -92,7 +93,7 @@ class AttentionRNNCell(nn.Module):
         """
         super(AttentionRNNCell, self).__init__()
         self.align_model = align_model
-        self.rnn_cell = nn.GRUCell(annot_dim + memory_dim, rnn_dim)
+        self.rnn_cell = nn.LSTMCell(annot_dim + memory_dim, rnn_dim)
         # pick bahdanau or location sensitive attention
         if align_model == 'b':
             self.alignment_model = BahdanauAttention(annot_dim, rnn_dim,
@@ -119,14 +120,14 @@ class AttentionRNNCell(nn.Module):
         rnn_input = torch.cat((memory, context), -1)
         # Feed it to RNN
         # s_i = f(y_{i-1}, c_{i}, s_{i-1})
-        rnn_output = self.rnn_cell(rnn_input, rnn_state)
+        rnn_state = self.rnn_cell(rnn_input, rnn_state)
         # Alignment
         # (batch, max_time)
         # e_{ij} = a(s_{i-1}, h_j)
         if self.align_model is 'b':
-            alignment = self.alignment_model(annots, rnn_output)
+            alignment = self.alignment_model(annots, rnn_state[0])
         else:
-            alignment = self.alignment_model(annots, rnn_output, atten)
+            alignment = self.alignment_model(annots, rnn_state[0], atten)
         if mask is not None:
             mask = mask.view(memory.size(0), -1)
             alignment.masked_fill_(1 - mask, -float("inf"))
@@ -138,4 +139,4 @@ class AttentionRNNCell(nn.Module):
         # c_i = \sum_{j=1}^{T_x} \alpha_{ij} h_j
         context = torch.bmm(alignment.unsqueeze(1), annots)
         context = context.squeeze(1)
-        return rnn_output, context, alignment
+        return rnn_state, context, alignment
