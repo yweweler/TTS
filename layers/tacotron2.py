@@ -176,7 +176,7 @@ class PostConvStack(nn.Module):
                     activation=nn.Tanh)
             elif idx == num_layers - 1:
                 layer = BatchNormConv1d(
-                    in_channels=in_channels,
+                    in_channels=hidden_channels,
                     out_channels=out_channels,
                     kernel_size=kernel_size,
                     stride=self.stride,
@@ -184,8 +184,8 @@ class PostConvStack(nn.Module):
                     activation=None)
             else:
                 layer = BatchNormConv1d(
-                    in_channels=out_channels,
-                    out_channels=out_channels,
+                    in_channels=hidden_channels,
+                    out_channels=hidden_channels,
                     kernel_size=kernel_size,
                     stride=self.stride,
                     padding=self.padding,
