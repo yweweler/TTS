@@ -2,6 +2,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from utils.generic_utils import sequence_mask
+from .custom_layers import ZoneOutCell
 
 
 class BahdanauAttention(nn.Module):
@@ -93,7 +94,7 @@ class AttentionRNNCell(nn.Module):
         """
         super(AttentionRNNCell, self).__init__()
         self.align_model = align_model
-        self.rnn_cell = nn.LSTMCell(annot_dim + memory_dim, rnn_dim)
+        self.rnn_cell = ZoneOutCell(nn.LSTMCell(annot_dim + memory_dim, rnn_dim), zoneout_prob=0.1)
         # pick bahdanau or location sensitive attention
         if align_model == 'b':
             self.alignment_model = BahdanauAttention(annot_dim, rnn_dim,

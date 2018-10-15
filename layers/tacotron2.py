@@ -3,6 +3,7 @@
 import torch
 from torch import nn
 from .attention import AttentionRNNCell
+from .custom_layers import ZoneOutCell
 
 
 class Prenet(nn.Module):
@@ -169,7 +170,7 @@ class PostConvStack(nn.Module):
             if idx == 0:
                 layer = BatchNormConv1d(
                     in_channels=in_channels,
-                    out_channels=out_channels,
+                    out_channels=hidden_channels,
                     kernel_size=kernel_size,
                     stride=self.stride,
                     padding=self.padding,
@@ -230,7 +231,7 @@ class Decoder(nn.Module):
         # (processed_memory | attention context) -> |Linear| -> decoder_RNN_input
         # self.project_to_decoder_in = nn.Linear(256 + in_features, 256)
         # (context(t), processed_memory) -> |RNN| -> RNN_state
-        self.decoder_rnn = nn.LSTMCell(1024 + in_features, 1024)
+        self.decoder_rnn = ZoneOutCell(nn.LSTMCell(1024 + in_features, 1024), zoneout_prob=0.1)
         # RNN_state -> |Linear| -> mel_spec
         self.proj_to_mel = nn.Linear(1024 + in_features, memory_dim * r)
         self.stopnet = nn.Sequential(
