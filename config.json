@@ -20,8 +20,8 @@
     "text_cleaner": "english_cleaners",
     "epochs": 1000,
     "lr": 0.0015,
-    "warmup_steps": 1000,
-    "batch_size":64,
+    "warmup_steps": 4000,
+    "batch_size":32,
     "eval_batch_size":32,
     "r": 2,
     "wd": 0.000001,
@@ -33,9 +33,9 @@
     "data_path": "../../Data/LJSpeech-1.1/tts_cache",
     "meta_file_train": "tts_meta_data.csv",
     "meta_file_val": "tts_meta_data_val.csv",
-    "data_loader": "TTSDatasetCached",
+    "data_loader": "TTSDatasetMemory",
     "dataset": "tts_cache",
     "min_seq_len": 0,
     "output_path": "../keep/",
-    "num_loader_workers": 32
+    "num_loader_workers": 8
 }
