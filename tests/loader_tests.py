@@ -17,16 +17,7 @@ class TestTTSDataset(unittest.TestCase):
     def __init__(self, *args, **kwargs):
         super(TestTTSDataset, self).__init__(*args, **kwargs)
         self.max_loader_iter = 4
-        self.ap = AudioProcessor(
-            sample_rate=c.sample_rate,
-            num_mels=c.num_mels,
-            min_level_db=c.min_level_db,
-            frame_shift_ms=c.frame_shift_ms,
-            frame_length_ms=c.frame_length_ms,
-            ref_level_db=c.ref_level_db,
-            num_freq=c.num_freq,
-            power=c.power,
-            preemphasis=c.preemphasis)
+        self.ap = AudioProcessor(**c.audio)
 
     def test_loader(self):
         if ok_ljspeech:
@@ -63,7 +54,7 @@ class TestTTSDataset(unittest.TestCase):
                     " !! Negative values in text_input: {}".format(check_count)
                 # TODO: more assertion here
                 assert mel_input.shape[0] == c.batch_size
-                assert mel_input.shape[2] == c.num_mels
+                assert mel_input.shape[2] == c.audio['num_mels']
 
     def test_batch_group_shuffle(self):
         if ok_ljspeech:
@@ -102,7 +93,7 @@ class TestTTSDataset(unittest.TestCase):
                     " !! Negative values in text_input: {}".format(check_count)
                 # TODO: more assertion here
                 assert mel_input.shape[0] == c.batch_size
-                assert mel_input.shape[2] == c.num_mels
+                assert mel_input.shape[2] == c.audio['num_mels']
             dataloader.dataset.sort_items()
             assert frames[0] != dataloader.dataset.items[0]
 
@@ -193,16 +184,7 @@ class TestTTSDatasetCached(unittest.TestCase):
     def __init__(self, *args, **kwargs):
         super(TestTTSDatasetCached, self).__init__(*args, **kwargs)
         self.max_loader_iter = 4
-        self.ap = AudioProcessor(
-            sample_rate=c.sample_rate,
-            num_mels=c.num_mels,
-            min_level_db=c.min_level_db,
-            frame_shift_ms=c.frame_shift_ms,
-            frame_length_ms=c.frame_length_ms,
-            ref_level_db=c.ref_level_db,
-            num_freq=c.num_freq,
-            power=c.power,
-            preemphasis=c.preemphasis)
+        self.ap = AudioProcessor(**c.audio)
 
     def test_loader(self):
         if ok_ljspeech:
@@ -239,7 +221,7 @@ class TestTTSDatasetCached(unittest.TestCase):
                     " !! Negative values in text_input: {}".format(check_count)
                 # TODO: more assertion here
                 assert mel_input.shape[0] == c.batch_size
-                assert mel_input.shape[2] == c.num_mels
+                assert mel_input.shape[2] == c.audio['num_mels']
 
     def test_batch_group_shuffle(self):
         if ok_ljspeech:
@@ -278,7 +260,7 @@ class TestTTSDatasetCached(unittest.TestCase):
                     " !! Negative values in text_input: {}".format(check_count)
                 # TODO: more assertion here
                 assert mel_input.shape[0] == c.batch_size
-                assert mel_input.shape[2] == c.num_mels
+                assert mel_input.shape[2] == c.audio['num_mels']
             dataloader.dataset.sort_items()
             assert frames[0] != dataloader.dataset.items[0]
 
