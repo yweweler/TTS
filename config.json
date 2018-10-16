@@ -36,7 +36,6 @@
     "print_step": 10,
 
     "run_eval": true,
-    "data_path": "../../Data/LJSpeech-1.1/tts_cache",
     "meta_file_train": "tts_meta_data.csv",
     "meta_file_val": "tts_meta_data_val.csv",
     "data_loader": "TTSDatasetMemory",
