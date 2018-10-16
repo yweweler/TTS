@@ -6,31 +6,29 @@ import numpy as np
 from pprint import pprint
 from scipy import signal, io
 
-_mel_basis = None
-
 
 class AudioProcessor(object):
-    def __init__(
-        self,
-        bits=None,
-        sample_rate=None,
-        num_mels=None,
-        min_level_db=None,
-        frame_shift_ms=None,
-        frame_length_ms=None,
-        ref_level_db=None,
-        num_freq=None,
-        power=None,
-        preemphasis=None,
-        signal_norm=None,
-        symmetric_norm=None,
-        max_norm=None,
-        griffin_lim_iters=None,
-        **kwargs
-    ):
+    def __init__(self,
+                 bits=None,
+                 sample_rate=None,
+                 num_mels=None,
+                 min_level_db=None,
+                 frame_shift_ms=None,
+                 frame_length_ms=None,
+                 ref_level_db=None,
+                 num_freq=None,
+                 power=None,
+                 preemphasis=None,
+                 signal_norm=None,
+                 symmetric_norm=None,
+                 max_norm=None,
+                 mel_fmin=None,
+                 mel_fmax=None,
+                 griffin_lim_iters=None,
+                 **kwargs):
 
         print(" > Setting up Audio Processor...")
-        
+
         self.bits = bits
         self.sample_rate = sample_rate
         self.num_mels = num_mels
@@ -44,6 +42,8 @@ class AudioProcessor(object):
         self.griffin_lim_iters = griffin_lim_iters
         self.signal_norm = signal_norm
         self.symmetric_norm = symmetric_norm
+        self.mel_fmin = 0 if mel_fmin is None else mel_fmin
+        self.mel_fmax = mel_fmax
         self.max_norm = 1.0 if max_norm is None else float(max_norm)
         self.n_fft, self.hop_length, self.win_length = self._stft_parameters()
         if preemphasis == 0:
@@ -58,47 +58,52 @@ class AudioProcessor(object):
         io.wavfile.write(path, self.sample_rate, wav_norm.astype(np.int16))
 
     def _linear_to_mel(self, spectrogram):
-        global _mel_basis
-        if _mel_basis is None:
-            _mel_basis = self._build_mel_basis()
+        _mel_basis = self._build_mel_basis()
         return np.dot(_mel_basis, spectrogram)
 
     def _mel_to_linear(self, mel_spec):
         inv_mel_basis = np.linalg.pinv(self._build_mel_basis())
         return np.maximum(1e-10, np.dot(inv_mel_basis, mel_spec))
 
-    def _build_mel_basis(self,):
+    def _build_mel_basis(self, ):
         n_fft = (self.num_freq - 1) * 2
-        return librosa.filters.mel(self.sample_rate, n_fft, n_mels=self.num_mels)
+        return librosa.filters.mel(
+            self.sample_rate,
+            n_fft,
+            n_mels=self.num_mels,
+            fmin=self.mel_fmin,
+            fmax=self.mel_fmax)
 
     def _normalize(self, S):
         """Put values in [0, 1]"""
         if self.signal_norm:
             S_norm = ((S - self.min_level_db) / -self.min_level_db)
             if self.symmetric_norm:
-                return np.clip(((2 * self.max_norm) * S_norm - self.max_norm), -self.max_norm, self.max_norm)
+                return np.clip(((2 * self.max_norm) * S_norm - self.max_norm),
+                               -self.max_norm, self.max_norm)
             else:
                 return np.clip(self.max_norm * S_norm, 0, self.max_norm)
         else:
             return S
-        
+
     def _denormalize(self, S):
         """Descale values to normal range"""
         if self.signal_norm:
             if self.symmetric_norm:
-                return ((np.clip(S, -self.max_norm, self.max_norm) + self.max_norm) * -self.min_level_db / (2 * self.max_norm)) + self.min_level_db
+                return (
+                    (np.clip(S, -self.max_norm, self.max_norm) + self.max_norm)
+                    * -self.min_level_db /
+                    (2 * self.max_norm)) + self.min_level_db
             else:
-                return (np.clip(S, 0, self.max_norm) * -self.min_level_db / self.max_norm) + self.min_level_db
+                return (np.clip(S, 0, self.max_norm) * -self.min_level_db /
+                        self.max_norm) + self.min_level_db
 
-    def _stft_parameters(self,):
+    def _stft_parameters(self, ):
         n_fft = (self.num_freq - 1) * 2
         hop_length = int(self.frame_shift_ms / 1000.0 * self.sample_rate)
         win_length = int(self.frame_length_ms / 1000.0 * self.sample_rate)
-        print(
-            " | > fft size: {}, hop length: {}, win length: {}".format(
-                n_fft, hop_length, win_length
-            )
-        )
+        print(" | > fft size: {}, hop length: {}, win length: {}".format(
+            n_fft, hop_length, win_length))
         return n_fft, hop_length, win_length
 
     def _amp_to_db(self, x):
@@ -132,9 +137,9 @@ class AudioProcessor(object):
         S = self._db_to_amp(S + self.ref_level_db)  # Convert back to linear
         # Reconstruct phase
         if self.preemphasis != 0:
-            return self.apply_inv_preemphasis(self._griffin_lim(S ** self.power))
+            return self.apply_inv_preemphasis(self._griffin_lim(S**self.power))
         else:
-            return self._griffin_lim(S ** self.power)
+            return self._griffin_lim(S**self.power)
 
     def inv_mel_spectrogram(self, mel_spectrogram):
         '''Converts mel spectrogram to waveform using librosa'''
@@ -142,9 +147,9 @@ class AudioProcessor(object):
         S = self._db_to_amp(D + self.ref_level_db)
         S = self._mel_to_linear(S)  # Convert back to linear
         if self.preemphasis != 0:
-            return self.apply_inv_preemphasis(self._griffin_lim(S ** self.power))
+            return self.apply_inv_preemphasis(self._griffin_lim(S**self.power))
         else:
-            return self._griffin_lim(S ** self.power)
+            return self._griffin_lim(S**self.power)
 
     def _griffin_lim(self, S):
         angles = np.exp(2j * np.pi * np.random.rand(*S.shape))
@@ -172,14 +177,15 @@ class AudioProcessor(object):
         )
 
     def _istft(self, y):
-        return librosa.istft(y, hop_length=self.hop_length, win_length=self.win_length)
+        return librosa.istft(
+            y, hop_length=self.hop_length, win_length=self.win_length)
 
     def find_endpoint(self, wav, threshold_db=-40, min_silence_sec=0.8):
         window_length = int(self.sample_rate * min_silence_sec)
         hop_length = int(window_length / 4)
         threshold = self._db_to_amp(threshold_db)
         for x in range(hop_length, len(wav) - window_length, hop_length):
-            if np.max(wav[x : x + window_length]) < threshold:
+            if np.max(wav[x:x + window_length]) < threshold:
                 return x + hop_length
         return len(wav)
 
@@ -209,10 +215,10 @@ class AudioProcessor(object):
         return x
 
     def encode_16bits(self, x):
-        return np.clip(x * 2 ** 15, -2 ** 15, 2 ** 15 - 1).astype(np.int16)
+        return np.clip(x * 2**15, -2**15, 2**15 - 1).astype(np.int16)
 
     def quantize(self, x):
-        return (x + 1.) * (2 ** self.bits - 1) / 2
+        return (x + 1.) * (2**self.bits - 1) / 2
 
     def dequantize(self, x):
-        return 2 * x / (2 ** self.bits - 1) - 1
+        return 2 * x / (2**self.bits - 1) - 1

@@ -9,7 +9,7 @@
         "sample_rate": 22050,   // wav sample-rate. If different than the original data, it is resampled.
         "frame_length_ms": 50,  // stft window length in ms.
         "frame_shift_ms": 12.5, // stft window hop-lengh in ms.
-        "preemphasis": 0.0,     // pre-emphasis to reduce spec noise and make it more structured. If 0.0, no -pre-emphasis.
+        "preemphasis": 0.97,    // pre-emphasis to reduce spec noise and make it more structured. If 0.0, no -pre-emphasis.
         "min_level_db": -100,   // normalization range
         "ref_level_db": 20,     // reference level db, theoretically 20db is the sound of air.
         "power": 1.5,           // value to sharpen wav signals after GL algorithm.
@@ -17,6 +17,8 @@
         "signal_norm": true,    // normalize the spec values in range [0, 1]
         "symmetric_norm": true, // move normalization to range [-1, 1]
         "max_norm": 4,          // scale normalization to range [-max_norm, max_norm] or [0, max_norm]
+        "mel_fmin": 95,         // minimum freq level for mel-spec. ~50 for male and ~95 for female voices. Tune for dataset!!
+        "mel_fmax": 7600,       // maximum freq level for mel-spec. Tune for dataset!!
     },
 
     "embedding_size": 256,
