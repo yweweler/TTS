@@ -294,7 +294,7 @@ class Decoder(nn.Module):
             [nn.GRUCell(256, 256) for _ in range(2)])
         # RNN_state -> |Linear| -> mel_spec
         self.proj_to_mel = nn.Linear(256, memory_dim * r)
-        self.stopnet = StopNet(r, memory_dim)
+        self.stopnet = StopNet(256)
 
     def forward(self, inputs, memory=None, mask=None):
         """
@@ -374,11 +374,9 @@ class Decoder(nn.Module):
             decoder_output = decoder_input
             # predict mel vectors from decoder vectors
             output = self.proj_to_mel(decoder_output)
-            output = torch.sigmoid(output)
-            stop_input = output
+            stop_input = decoder_input
             # predict stop token
-            stop_token, stopnet_rnn_hidden = self.stopnet(
-                stop_input, stopnet_rnn_hidden)
+            stop_token = self.stopnet(stop_input)
             outputs += [output]
             attentions += [attention]
             stop_tokens += [stop_token]
@@ -409,28 +407,14 @@ class StopNet(nn.Module):
         memory_dim (int): feature dimension for each output frame.
     """
 
-    def __init__(self, r, memory_dim):
-        r"""
-        Predicts the stop token to stop the decoder at testing time
-
-        Args:
-            r (int): number of network output frames.
-            memory_dim (int): single feature dim of a single network output frame.
-        """
+    def __init__(self, in_features):
         super(StopNet, self).__init__()
-        self.rnn = nn.GRUCell(memory_dim * r, memory_dim * r)
-        self.relu = nn.ReLU()
-        self.linear = nn.Linear(r * memory_dim, 1)
+        self.linear = nn.Linear(in_features, 1)
         self.sigmoid = nn.Sigmoid()
 
-    def forward(self, inputs, rnn_hidden):
-        """
-        Args:
-            inputs: network output tensor with r x memory_dim feature dimension.
-            rnn_hidden: hidden state of the RNN cell.
-        """
-        rnn_hidden = self.rnn(inputs, rnn_hidden)
-        outputs = self.relu(rnn_hidden)
-        outputs = self.linear(outputs)
+    def forward(self, inputs):
+        # rnn_hidden = self.rnn(inputs, rnn_hidden)
+        # outputs = self.relu(rnn_hidden)
+        outputs = self.linear(inputs)
         outputs = self.sigmoid(outputs)
-        return outputs, rnn_hidden
+        return outputs
