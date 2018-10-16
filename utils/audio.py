@@ -57,14 +57,21 @@ class AudioProcessor(object):
             _mel_basis = self._build_mel_basis()
         return np.dot(_mel_basis, spectrogram)
 
+    def _mel_to_linear(self, mel_spec):
+        inv_mel_basis = np.linalg.pinv(self._build_mel_basis())
+        print(mel_spec.shape)
+        return np.maximum(1e-10, np.dot(inv_mel_basis, mel_spec.T))
+
     def _build_mel_basis(self,):
         n_fft = (self.num_freq - 1) * 2
         return librosa.filters.mel(self.sample_rate, n_fft, n_mels=self.num_mels)
 
     def _normalize(self, S):
+        """Put values in [0, 1]"""
         return np.clip((S - self.min_level_db) / -self.min_level_db, 0, 1)
 
     def _denormalize(self, S):
+        """Descale values to normal range"""
         return (np.clip(S, 0, 1) * -self.min_level_db) + self.min_level_db
 
     def _stft_parameters(self,):
@@ -108,6 +115,16 @@ class AudioProcessor(object):
         S = self._denormalize(spectrogram)
         S = self._db_to_amp(S + self.ref_level_db)  # Convert back to linear
         # Reconstruct phase
+        if self.preemphasis != 0:
+            return self.apply_inv_preemphasis(self._griffin_lim(S ** self.power))
+        else:
+            return self._griffin_lim(S ** self.power)
+
+    def inv_mel_spectrogram(self, mel_spectrogram):
+        '''Converts mel spectrogram to waveform using librosa'''
+        D = self._denormalize(mel_spectrogram)
+        S = self._db_to_amp(D + self.ref_level_db)
+        S = self._mel_to_linear(S)  # Convert back to linear
         if self.preemphasis != 0:
             return self.apply_inv_preemphasis(self._griffin_lim(S ** self.power))
         else:
