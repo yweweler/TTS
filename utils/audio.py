@@ -4,7 +4,7 @@ import pickle
 import copy
 import numpy as np
 from pprint import pprint
-from scipy import signal
+from scipy import signal, io
 
 _mel_basis = None
 
@@ -22,6 +22,9 @@ class AudioProcessor(object):
         num_freq=None,
         power=None,
         preemphasis=None,
+        signal_norm=None,
+        symmetric_norm=None,
+        max_norm=None,
         griffin_lim_iters=None,
         **kwargs
     ):
@@ -39,6 +42,9 @@ class AudioProcessor(object):
         self.power = power
         self.preemphasis = preemphasis
         self.griffin_lim_iters = griffin_lim_iters
+        self.signal_norm = signal_norm
+        self.symmetric_norm = symmetric_norm
+        self.max_norm = 1.0 if max_norm is None else float(max_norm)
         self.n_fft, self.hop_length, self.win_length = self._stft_parameters()
         if preemphasis == 0:
             print(" | > Preemphasis is deactive.")
@@ -49,7 +55,7 @@ class AudioProcessor(object):
     def save_wav(self, wav, path):
         wav_norm = wav * (32767 / max(0.01, np.max(np.abs(wav))))
         # librosa.output.write_wav(path, wav_norm.astype(np.int16), self.sample_rate)
-        scipy.io.wavfile.write(path, self.sample_rate, wav_norm.astype(np.int16))
+        io.wavfile.write(path, self.sample_rate, wav_norm.astype(np.int16))
 
     def _linear_to_mel(self, spectrogram):
         global _mel_basis
@@ -59,8 +65,7 @@ class AudioProcessor(object):
 
     def _mel_to_linear(self, mel_spec):
         inv_mel_basis = np.linalg.pinv(self._build_mel_basis())
-        print(mel_spec.shape)
-        return np.maximum(1e-10, np.dot(inv_mel_basis, mel_spec.T))
+        return np.maximum(1e-10, np.dot(inv_mel_basis, mel_spec))
 
     def _build_mel_basis(self,):
         n_fft = (self.num_freq - 1) * 2
@@ -68,11 +73,22 @@ class AudioProcessor(object):
 
     def _normalize(self, S):
         """Put values in [0, 1]"""
-        return np.clip((S - self.min_level_db) / -self.min_level_db, 0, 1)
-
+        if self.signal_norm:
+            S_norm = ((S - self.min_level_db) / -self.min_level_db)
+            if self.symmetric_norm:
+                return np.clip(((2 * self.max_norm) * S_norm - self.max_norm), -self.max_norm, self.max_norm)
+            else:
+                return np.clip(self.max_norm * S_norm, 0, self.max_norm)
+        else:
+            return S
+        
     def _denormalize(self, S):
         """Descale values to normal range"""
-        return (np.clip(S, 0, 1) * -self.min_level_db) + self.min_level_db
+        if self.signal_norm:
+            if self.symmetric_norm:
+                return ((np.clip(S, -self.max_norm, self.max_norm) + self.max_norm) * -self.min_level_db / (2 * self.max_norm)) + self.min_level_db
+            else:
+                return (np.clip(S, 0, self.max_norm) * -self.min_level_db / self.max_norm) + self.min_level_db
 
     def _stft_parameters(self,):
         n_fft = (self.num_freq - 1) * 2

@@ -1,4 +1,4 @@
-[...] inverse mel spec to audio.
+[X] inverse mel spec to audio.
 [] symmetric data normalization with max abs value.
 [] silence trimming.
 [] fmin and fmax for mel_basis. fmin=55 for male and 95 for female, fmax=7600
