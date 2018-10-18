@@ -226,12 +226,12 @@ class Decoder(nn.Module):
             out_dim=128,
             rnn_dim=1024,
             annot_dim=in_features,
-            memory_dim=256,
+            memory_dim=1024,
             align_model='ls')
         # (processed_memory | attention context) -> |Linear| -> decoder_RNN_input
         # self.project_to_decoder_in = nn.Linear(256 + in_features, 256)
         # (context(t), processed_memory) -> |RNN| -> RNN_state
-        self.decoder_rnn = ZoneOutCell(nn.LSTMCell(1024 + in_features, 1024), zoneout_prob=0.1)
+        self.decoder_rnn = ZoneOutCell(nn.LSTMCell(512 + 256, 1024), zoneout_prob=0.1)
         # RNN_state -> |Linear| -> mel_spec
         self.proj_to_mel = nn.Linear(1024 + in_features, memory_dim * r)
         self.stopnet = nn.Sequential(
@@ -297,18 +297,18 @@ class Decoder(nn.Module):
             attention_cat = torch.cat(
                 (attention.unsqueeze(1), attention_cum.unsqueeze(1)), dim=1)
             attention_rnn_states, current_context_vec, attention = self.attention_rnn(
-                processed_memory, current_context_vec, attention_rnn_states,
+                decoder_rnn_states[0], current_context_vec, attention_rnn_states,
                 inputs, attention_cat, mask)
             attention_cum += attention
             attention_rnn_output = attention_rnn_states[0]
             # Concat RNN output and attention context vector
-            decoder_rnn_input = torch.cat((attention_rnn_output, current_context_vec), -1)
+            decoder_rnn_input = torch.cat((processed_memory, current_context_vec), -1)
             # Pass through the decoder RNNs
             decoder_rnn_states = self.decoder_rnn(decoder_rnn_input, decoder_rnn_states)
-            decoder_output = decoder_rnn_states[0]
+            decoder_rnn_output = decoder_rnn_states[0]
             # predict mel vectors from decoder vectors
             decoder_proj_input = torch.cat(
-                (decoder_output, current_context_vec), dim=1)
+                (decoder_rnn_output, current_context_vec), dim=1)
             output = self.proj_to_mel(decoder_proj_input)
             # predict stop token
             stop_token = self.stopnet(decoder_proj_input)
