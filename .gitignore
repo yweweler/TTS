@@ -121,3 +121,7 @@ version.py
 
 # jupyter dummy files
 core
+
+# TTS
+*.pyc
+tests/outputs/*

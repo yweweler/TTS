@@ -10,9 +10,10 @@
         "min_level_db": -100,   // normalization range
         "ref_level_db": 20,     // reference level db, theoretically 20db is the sound of air.
         "power": 1.5,           // value to sharpen wav signals after GL algorithm.
-        "griffin_lim_iters": 60,// #griffin-lim iterations. 30-60 is a good range. Larger the value, slower the generation.
+        "griffin_lim_iters": 30,// #griffin-lim iterations. 30-60 is a good range. Larger the value, slower the generation.
         "signal_norm": true,    // normalize the spec values in range [0, 1]
         "symmetric_norm": true, // move normalization to range [-1, 1]
+        "clip_norm": true,       // clip normalized values into the range.
         "max_norm": 4,          // scale normalization to range [-max_norm, max_norm] or [0, max_norm]
         "mel_fmin": 95,         // minimum freq level for mel-spec. ~50 for male and ~95 for female voices. Tune for dataset!!
         "mel_fmax": 7600        // maximum freq level for mel-spec. Tune for dataset!!
@@ -29,11 +30,6 @@
     "r": 5,
     "mk": 1.0,
     "priority_freq": false,
-
-
-    "griffin_lim_iters": 60,
-    "power": 1.5,
-
     "num_loader_workers": 4,
 
     "save_step": 200,

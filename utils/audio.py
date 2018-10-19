@@ -55,7 +55,6 @@ class AudioProcessor(object):
 
     def save_wav(self, wav, path):
         wav_norm = wav * (32767 / max(0.01, np.max(np.abs(wav))))
-        # librosa.output.write_wav(path, wav_norm.astype(np.int16), self.sample_rate)
         io.wavfile.write(path, self.sample_rate, wav_norm.astype(np.int16))
 
     def _linear_to_mel(self, spectrogram):
@@ -68,6 +67,7 @@ class AudioProcessor(object):
 
     def _build_mel_basis(self, ):
         n_fft = (self.num_freq - 1) * 2
+        assert self.mel_fmax <= self.sample_rate // 2
         return librosa.filters.mel(
             self.sample_rate,
             n_fft,
@@ -76,7 +76,7 @@ class AudioProcessor(object):
             fmax=self.mel_fmax)
 
     def _normalize(self, S):
-        """Put values in [0, 1]"""
+        """Put values in [0, self.max_norm] or [-self.max_norm, self.max_norm]"""
         if self.signal_norm:
             S_norm = ((S - self.min_level_db) / - self.min_level_db)
             if self.symmetric_norm:
@@ -93,7 +93,7 @@ class AudioProcessor(object):
             return S
 
     def _denormalize(self, S):
-        """Descale values to normal range"""
+        """denormalize values"""
         S_denorm = S
         if self.signal_norm:
             if self.symmetric_norm:
@@ -111,6 +111,7 @@ class AudioProcessor(object):
             return S
 
     def _stft_parameters(self, ):
+        """Compute necessary stft parameters with given time values"""
         n_fft = (self.num_freq - 1) * 2
         hop_length = int(self.frame_shift_ms / 1000.0 * self.sample_rate)
         win_length = int(self.frame_length_ms / 1000.0 * self.sample_rate)
