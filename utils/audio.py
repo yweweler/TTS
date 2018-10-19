@@ -45,6 +45,7 @@ class AudioProcessor(object):
         self.mel_fmin = 0 if mel_fmin is None else mel_fmin
         self.mel_fmax = mel_fmax
         self.max_norm = 1.0 if max_norm is None else float(max_norm)
+        self.clip_norm = True
         self.n_fft, self.hop_length, self.win_length = self._stft_parameters()
         if preemphasis == 0:
             print(" | > Preemphasis is deactive.")
@@ -77,26 +78,37 @@ class AudioProcessor(object):
     def _normalize(self, S):
         """Put values in [0, 1]"""
         if self.signal_norm:
-            S_norm = ((S - self.min_level_db) / -self.min_level_db)
+            S_norm = ((S - self.min_level_db) / - self.min_level_db)
             if self.symmetric_norm:
-                return np.clip(((2 * self.max_norm) * S_norm - self.max_norm),
-                               -self.max_norm, self.max_norm)
+                S_norm = ((2 * self.max_norm) * S_norm) - self.max_norm
+                if self.clip_norm :
+                    S_norm = np.clip(S_norm, -self.max_norm, self.max_norm)
+                return S_norm
             else:
-                return np.clip(self.max_norm * S_norm, 0, self.max_norm)
+                S_norm = self.max_norm * S_norm
+                if self.clip_norm:
+                    S_norm = np.clip(S_norm, 0, self.max_norm)
+                return S_norm
         else:
             return S
 
     def _denormalize(self, S):
         """Descale values to normal range"""
+        S_denorm = S
         if self.signal_norm:
             if self.symmetric_norm:
-                return (
-                    (np.clip(S, -self.max_norm, self.max_norm) + self.max_norm)
-                    * -self.min_level_db /
-                    (2 * self.max_norm)) + self.min_level_db
+                if self.clip_norm:
+                    S_denorm = np.clip(S_denorm, -self.max_norm, self.max_norm) 
+                S_denorm = ((S_denorm + self.max_norm) * -self.min_level_db / (2 * self.max_norm)) + self.min_level_db
+                return S_denorm
             else:
-                return (np.clip(S, 0, self.max_norm) * -self.min_level_db /
-                        self.max_norm) + self.min_level_db
+                if self.clip_norm:
+                    S_denorm = np.clip(S_denorm, 0, self.max_norm)
+                S_denorm = (S_denorm * -self.min_level_db /
+                    self.max_norm) + self.min_level_db
+                return S_denorm
+        else:
+            return S
 
     def _stft_parameters(self, ):
         n_fft = (self.num_freq - 1) * 2
@@ -131,6 +143,14 @@ class AudioProcessor(object):
         S = self._amp_to_db(np.abs(D)) - self.ref_level_db
         return self._normalize(S)
 
+    def melspectrogram(self, y):
+        if self.preemphasis != 0:
+            D = self._stft(self.apply_preemphasis(y))
+        else:
+            D = self._stft(y)
+        S = self._amp_to_db(self._linear_to_mel(np.abs(D))) - self.ref_level_db
+        return self._normalize(S)
+
     def inv_spectrogram(self, spectrogram):
         """Converts spectrogram to waveform using librosa"""
         S = self._denormalize(spectrogram)
@@ -159,14 +179,6 @@ class AudioProcessor(object):
             angles = np.exp(1j * np.angle(self._stft(y)))
             y = self._istft(S_complex * angles)
         return y
-
-    def melspectrogram(self, y):
-        if self.preemphasis != 0:
-            D = self._stft(self.apply_preemphasis(y))
-        else:
-            D = self._stft(y)
-        S = self._amp_to_db(self._linear_to_mel(np.abs(D))) - self.ref_level_db
-        return self._normalize(S)
 
     def _stft(self, y):
         return librosa.stft(

@@ -1,5 +1,5 @@
 {
-    "model_name": "TTS-mel_spec-r=2",
+    "model_name": "TTS-mel_spec-new_audio",
     "model_description": "Predict only mel spectrogram with r=2",
 
     "audio":{
