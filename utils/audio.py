@@ -24,6 +24,7 @@ class AudioProcessor(object):
                  max_norm=None,
                  mel_fmin=None,
                  mel_fmax=None,
+                 clip_norm=True,
                  griffin_lim_iters=None,
                  **kwargs):
 
@@ -45,7 +46,7 @@ class AudioProcessor(object):
         self.mel_fmin = 0 if mel_fmin is None else mel_fmin
         self.mel_fmax = mel_fmax
         self.max_norm = 1.0 if max_norm is None else float(max_norm)
-        self.clip_norm = True
+        self.clip_norm = clip_norm
         self.n_fft, self.hop_length, self.win_length = self._stft_parameters()
         if preemphasis == 0:
             print(" | > Preemphasis is deactive.")
@@ -67,7 +68,8 @@ class AudioProcessor(object):
 
     def _build_mel_basis(self, ):
         n_fft = (self.num_freq - 1) * 2
-        assert self.mel_fmax <= self.sample_rate // 2
+        if self.mel_fmax is not None:
+            assert self.mel_fmax <= self.sample_rate // 2
         return librosa.filters.mel(
             self.sample_rate,
             n_fft,
