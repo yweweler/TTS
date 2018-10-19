@@ -78,7 +78,7 @@ class MyDataset(Dataset):
         text = np.asarray(
             text_to_sequence(text, [self.cleaners]), dtype=np.int32)
         wav = np.asarray(self.load_wav(wav_file), dtype=np.float32)
-        sample = {'text': text, 'wav': wav, 'item_idx': self.items[idx][0]}
+        sample = {'text': text, 'wav': wav, 'item_idx': self.items[idx][1]}
         return sample
 
     def collate_fn(self, batch):

@@ -7,7 +7,8 @@ from TTS.utils.generic_utils import load_config
 
 file_path = os.path.dirname(os.path.realpath(__file__))
 INPUTPATH = os.path.join(file_path, 'inputs')
-OUTPATH = os.path.join(file_path, "outputs")
+OUTPATH = os.path.join(file_path, "outputs/audio_tests")
+os.makedirs(OUTPATH, exist_ok=True)
 
 c = load_config(os.path.join(file_path, 'test_config.json'))
 
@@ -36,9 +37,7 @@ class TestAudio(unittest.TestCase):
             file_name = "/audio_test-melspec_max_norm_{}-signal_norm_{}-symmetric_{}-clip_norm_{}.wav"\
                 .format(max_norm, signal_norm, symmetric_norm, clip_norm)
             print(" | > Creating wav file at : ", file_name)
-            self.ap.save_wav(
-                wav_, OUTPATH + file_name
-                )
+            self.ap.save_wav(wav_, OUTPATH + file_name)
 
         # maxnorm = 1.0
         _test(1., False, False, False)

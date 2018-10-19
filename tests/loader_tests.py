@@ -1,5 +1,6 @@
 import os
 import unittest
+import shutil
 import numpy as np
 
 from torch.utils.data import DataLoader
@@ -9,7 +10,8 @@ from TTS.datasets import TTSDataset, TTSDatasetCached, TTSDatasetMemory
 from TTS.datasets.preprocess import ljspeech, tts_cache
 
 file_path = os.path.dirname(os.path.realpath(__file__))
-OUTPATH = os.path.join(file_path, "outputs")
+OUTPATH = os.path.join(file_path, "outputs/loader_tests/")
+os.makedirs(OUTPATH, exist_ok=True)
 c = load_config(os.path.join(file_path, 'test_config.json'))
 ok_ljspeech = os.path.exists(c.data_path)
 
@@ -20,24 +22,28 @@ class TestTTSDataset(unittest.TestCase):
         self.max_loader_iter = 4
         self.ap = AudioProcessor(**c.audio)
 
+    def _create_dataloader(self, batch_size, r, bgs):
+        dataset = TTSDataset.MyDataset(
+            c.data_path,
+            'metadata.csv',
+            r,
+            c.text_cleaner,
+            preprocessor=ljspeech,
+            ap=self.ap,
+            batch_group_size=bgs,
+            min_seq_len=c.min_seq_len)
+        dataloader = DataLoader(
+            dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            collate_fn=dataset.collate_fn,
+            drop_last=True,
+            num_workers=c.num_loader_workers)
+        return dataloader, dataset
+
     def test_loader(self):
         if ok_ljspeech:
-            dataset = TTSDataset.MyDataset(
-                c.data_path,
-                'metadata.csv',
-                c.r,
-                c.text_cleaner,
-                preprocessor = ljspeech,
-                ap=self.ap,
-                min_seq_len=c.min_seq_len)
-
-            dataloader = DataLoader(
-                dataset,
-                batch_size=2,
-                shuffle=True,
-                collate_fn=dataset.collate_fn,
-                drop_last=True,
-                num_workers=c.num_loader_workers)
+            dataloader, dataset = self._create_dataloader(2, c.r, 0)
 
             for i, data in enumerate(dataloader):
                 if i == self.max_loader_iter:
@@ -56,26 +62,17 @@ class TestTTSDataset(unittest.TestCase):
                 # TODO: more assertion here
                 assert mel_input.shape[0] == c.batch_size
                 assert mel_input.shape[2] == c.audio['num_mels']
+                if self.ap.symmetric_norm:
+                    assert mel_input.max() <= self.ap.max_norm
+                    assert mel_input.min() >= -self.ap.max_norm
+                    assert mel_input.min() < 0
+                else:
+                    assert mel_input.max() <= self.ap.max_norm
+                    assert mel_input.min() >= 0
 
     def test_batch_group_shuffle(self):
         if ok_ljspeech:
-            dataset = TTSDataset.MyDataset(
-                c.data_path,
-                'metadata.csv',
-                c.r,
-                c.text_cleaner,
-                preprocessor=ljspeech,
-                ap=self.ap,
-                batch_group_size=16,
-                min_seq_len=c.min_seq_len)
-
-            dataloader = DataLoader(
-                dataset,
-                batch_size=2,
-                shuffle=True,
-                collate_fn=dataset.collate_fn,
-                drop_last=True,
-                num_workers=c.num_loader_workers)
+            dataloader, dataset = self._create_dataloader(2, c.r, 16)
 
             frames = dataset.items
             for i, data in enumerate(dataloader):
@@ -98,26 +95,9 @@ class TestTTSDataset(unittest.TestCase):
             dataloader.dataset.sort_items()
             assert frames[0] != dataloader.dataset.items[0]
 
-
-    def test_padding(self):
+    def test_padding_and_spec(self):
         if ok_ljspeech:
-            dataset = TTSDataset.MyDataset(
-                c.data_path,
-               'metadata.csv',
-                1,
-                c.text_cleaner,
-                preprocessor=ljspeech,
-                ap=self.ap,
-                min_seq_len=c.min_seq_len)
-
-            # Test for batch size 1
-            dataloader = DataLoader(
-                dataset,
-                batch_size=1,
-                shuffle=False,
-                collate_fn=dataset.collate_fn,
-                drop_last=True,
-                num_workers=c.num_loader_workers)
+            dataloader, dataset = self._create_dataloader(1, 1, 0)
 
             for i, data in enumerate(dataloader):
                 if i == self.max_loader_iter:
@@ -130,6 +110,19 @@ class TestTTSDataset(unittest.TestCase):
                 stop_target = data[4]
                 item_idx = data[5]
 
+                # check mel_spec consistency
+                wav = self.ap.load_wav(item_idx[0])
+                mel = self.ap.melspectrogram(wav)
+                mel_dl = mel_input[0].cpu().numpy()
+                assert (
+                    abs(mel.T).astype("float32") - abs(mel_dl[:-1])).sum() == 0
+
+                # check mel-spec correctness
+                mel_spec = mel_input[0].cpu().numpy()
+                wav = self.ap.inv_mel_spectrogram(mel_spec.T)
+                self.ap.save_wav(wav, OUTPATH + '/mel_inv_dataloader.wav')
+                shutil.copy(item_idx[0], OUTPATH + '/mel_target_dataloader.wav')
+
                 # check the last time step to be zero padded
                 assert mel_input[0, -1].sum() == 0
                 assert mel_input[0, -2].sum() != 0
@@ -140,13 +133,7 @@ class TestTTSDataset(unittest.TestCase):
                 assert mel_lengths[0] == mel_input[0].shape[0]
 
             # Test for batch size 2
-            dataloader = DataLoader(
-                dataset,
-                batch_size=2,
-                shuffle=False,
-                collate_fn=dataset.collate_fn,
-                drop_last=False,
-                num_workers=c.num_loader_workers)
+            dataloader, dataset = self._create_dataloader(2, 1, 0)
 
             for i, data in enumerate(dataloader):
                 if i == self.max_loader_iter:
@@ -185,27 +172,33 @@ class TestTTSDatasetCached(unittest.TestCase):
     def __init__(self, *args, **kwargs):
         super(TestTTSDatasetCached, self).__init__(*args, **kwargs)
         self.max_loader_iter = 4
-        self.ap = AudioProcessor(**c.audio)
+        self.c = load_config(os.path.join(c.data_path_cache, 'config.json'))
+        self.ap = AudioProcessor(**self.c.audio)
+
+    def _create_dataloader(self, batch_size, r, bgs):
+
+        dataset = TTSDatasetCached.MyDataset(
+            c.data_path_cache,
+            'tts_meta_data.csv',
+            r,
+            c.text_cleaner,
+            preprocessor=tts_cache,
+            ap=self.ap,
+            batch_group_size=bgs,
+            min_seq_len=c.min_seq_len)
+
+        dataloader = DataLoader(
+            dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            collate_fn=dataset.collate_fn,
+            drop_last=True,
+            num_workers=c.num_loader_workers)
+        return dataloader, dataset
 
     def test_loader(self):
         if ok_ljspeech:
-            dataset = TTSDatasetCached.MyDataset(
-                c.data_path_cache,
-                'tts_meta_data.csv',
-                c.r,
-                c.text_cleaner,
-                preprocessor = tts_cache,
-                ap=self.ap,
-                min_seq_len=c.min_seq_len)
-
-            dataloader = DataLoader(
-                dataset,
-                batch_size=2,
-                shuffle=True,
-                collate_fn=dataset.collate_fn,
-                drop_last=True,
-                num_workers=c.num_loader_workers)
-
+            dataloader, dataset = self._create_dataloader(2, c.r, 0)
             for i, data in enumerate(dataloader):
                 if i == self.max_loader_iter:
                     break
@@ -224,26 +217,17 @@ class TestTTSDatasetCached(unittest.TestCase):
                 assert mel_input.shape[0] == c.batch_size
                 assert mel_input.shape[2] == c.audio['num_mels']
 
+                if self.ap.symmetric_norm:
+                    assert mel_input.max() <= self.ap.max_norm
+                    assert mel_input.min() >= -self.ap.max_norm
+                    assert mel_input.min() < 0
+                else:
+                    assert mel_input.max() <= self.ap.max_norm
+                    assert mel_input.min() >= 0
+
     def test_batch_group_shuffle(self):
         if ok_ljspeech:
-            dataset = TTSDatasetCached.MyDataset(
-                c.data_path_cache,
-                'tts_meta_data.csv',
-                c.r,
-                c.text_cleaner,
-                preprocessor=ljspeech,
-                ap=self.ap,
-                batch_group_size=16,
-                min_seq_len=c.min_seq_len)
-
-            dataloader = DataLoader(
-                dataset,
-                batch_size=2,
-                shuffle=True,
-                collate_fn=dataset.collate_fn,
-                drop_last=True,
-                num_workers=c.num_loader_workers)
-
+            dataloader, dataset = self._create_dataloader(2, c.r, 16)
             frames = dataset.items
             for i, data in enumerate(dataloader):
                 if i == self.max_loader_iter:
@@ -265,27 +249,9 @@ class TestTTSDatasetCached(unittest.TestCase):
             dataloader.dataset.sort_items()
             assert frames[0] != dataloader.dataset.items[0]
 
-
-    def test_padding(self):
+    def test_padding_and_spec(self):
         if ok_ljspeech:
-            dataset = TTSDatasetCached.MyDataset(
-                c.data_path_cache,
-                'tts_meta_data.csv',
-                1,
-                c.text_cleaner,
-                preprocessor=ljspeech,
-                ap=self.ap,
-                min_seq_len=c.min_seq_len)
-
-            # Test for batch size 1
-            dataloader = DataLoader(
-                dataset,
-                batch_size=1,
-                shuffle=False,
-                collate_fn=dataset.collate_fn,
-                drop_last=True,
-                num_workers=c.num_loader_workers)
-
+            dataloader, dataset = self._create_dataloader(1, 1, 0)
             for i, data in enumerate(dataloader):
                 if i == self.max_loader_iter:
                     break
@@ -297,6 +263,24 @@ class TestTTSDatasetCached(unittest.TestCase):
                 stop_target = data[4]
                 item_idx = data[5]
 
+                # check mel_spec consistency
+                if item_idx[0].split('.')[-1] == 'npy':
+                    wav = np.load(item_idx[0])
+                else:
+                    wav = self.ap.load_wav(item_idx[0])
+                mel = self.ap.melspectrogram(wav)
+                mel_dl = mel_input[0].cpu().numpy()
+                assert (abs(mel.T).astype("float32") - abs(
+                    mel_dl[:-1])).sum() == 0, (
+                        abs(mel.T).astype("float32") - abs(mel_dl[:-1])).sum()
+
+                # check mel-spec correctness
+                mel_spec = mel_input[0].cpu().numpy()
+                wav = self.ap.inv_mel_spectrogram(mel_spec.T)
+                self.ap.save_wav(wav,
+                                 OUTPATH + '/mel_inv_dataloader_cache.wav')
+                shutil.copy(item_idx[0], OUTPATH + '/mel_target_dataloader_cache.wav')
+
                 # check the last time step to be zero padded
                 assert mel_input[0, -1].sum() == 0
                 assert mel_input[0, -2].sum() != 0
@@ -307,14 +291,7 @@ class TestTTSDatasetCached(unittest.TestCase):
                 assert mel_lengths[0] == mel_input[0].shape[0]
 
             # Test for batch size 2
-            dataloader = DataLoader(
-                dataset,
-                batch_size=2,
-                shuffle=False,
-                collate_fn=dataset.collate_fn,
-                drop_last=False,
-                num_workers=c.num_loader_workers)
-
+            dataloader, dataset = self._create_dataloader(2, 1, 0)
             for i, data in enumerate(dataloader):
                 if i == self.max_loader_iter:
                     break
@@ -352,6 +329,7 @@ class TestTTSDatasetMemory(unittest.TestCase):
     def __init__(self, *args, **kwargs):
         super(TestTTSDatasetMemory, self).__init__(*args, **kwargs)
         self.max_loader_iter = 4
+        self.c = load_config(os.path.join(c.data_path_cache, 'config.json'))
         self.ap = AudioProcessor(**c.audio)
 
     def test_loader(self):
@@ -361,7 +339,7 @@ class TestTTSDatasetMemory(unittest.TestCase):
                 'tts_meta_data.csv',
                 c.r,
                 c.text_cleaner,
-                preprocessor = tts_cache,
+                preprocessor=tts_cache,
                 ap=self.ap,
                 min_seq_len=c.min_seq_len)
 
@@ -391,16 +369,14 @@ class TestTTSDatasetMemory(unittest.TestCase):
                 assert mel_input.shape[0] == c.batch_size
                 assert mel_input.shape[2] == c.audio['num_mels']
                 assert mel_input.max() <= self.ap.max_norm
-                # check mel-spec range.
+                # check data range
                 if self.ap.symmetric_norm:
+                    assert mel_input.max() <= self.ap.max_norm
                     assert mel_input.min() >= -self.ap.max_norm
-                    assert mel_input.min() < 0, mel_input.min()
+                    assert mel_input.min() < 0
                 else:
+                    assert mel_input.max() <= self.ap.max_norm
                     assert mel_input.min() >= 0
-                # check mel-spec correctness
-                mel_spec = mel_input[0].cpu().numpy()
-                wav = self.ap.inv_melspectrogram(mel_spec)
-                self.ap.save_wav(OUTPATH+'/mel_inv_TTSmemo.wav')
 
     def test_batch_group_shuffle(self):
         if ok_ljspeech:
@@ -437,14 +413,12 @@ class TestTTSDatasetMemory(unittest.TestCase):
                 check_count = len(neg_values)
                 assert check_count == 0, \
                     " !! Negative values in text_input: {}".format(check_count)
-                # TODO: more assertion here
                 assert mel_input.shape[0] == c.batch_size
                 assert mel_input.shape[2] == c.audio['num_mels']
             dataloader.dataset.sort_items()
             assert frames[0] != dataloader.dataset.items[0]
 
-
-    def test_padding(self):
+    def test_padding_and_spec(self):
         if ok_ljspeech:
             dataset = TTSDatasetMemory.MyDataset(
                 c.data_path_cache,
@@ -474,6 +448,22 @@ class TestTTSDatasetMemory(unittest.TestCase):
                 mel_lengths = data[3]
                 stop_target = data[4]
                 item_idx = data[5]
+
+                # check mel_spec consistency
+                if item_idx[0].split('.')[-1] == 'npy':
+                    wav = np.load(item_idx[0])
+                else:
+                    wav = self.ap.load_wav(item_idx[0])
+                mel = self.ap.melspectrogram(wav)
+                mel_dl = mel_input[0].cpu().numpy()
+                assert (
+                    abs(mel.T).astype("float32") - abs(mel_dl[:-1])).sum() == 0
+
+                # check mel-spec correctness
+                mel_spec = mel_input[0].cpu().numpy()
+                wav = self.ap.inv_mel_spectrogram(mel_spec.T)
+                self.ap.save_wav(wav, OUTPATH + '/mel_inv_dataloader_memo.wav')
+                shutil.copy(item_idx[0], OUTPATH + '/mel_target_dataloader_memo.wav')
 
                 # check the last time step to be zero padded
                 assert mel_input[0, -1].sum() == 0
@@ -524,4 +514,3 @@ class TestTTSDatasetMemory(unittest.TestCase):
 
                 # check batch conditions
                 assert (mel_input * stop_target.unsqueeze(2)).sum() == 0
-
