@@ -287,6 +287,9 @@ class Decoder(nn.Module):
             inputs.data.new(B, self.lstm_size).zero_()
         ]]
         current_context_vec = inputs.data.new(B, self.in_features).zero_()
+        # attention states
+        attention = inputs.data.new(B, T).zero_()
+        attention_cum = inputs.data.new(B, T).zero_()
         # Time first (T_decoder, B, memory_dim)
         if memory is not None:
             memory = memory.transpose(0, 1)
