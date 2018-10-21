@@ -1,6 +1,6 @@
 {
-    "model_name": "TTS-mel_spec-new_audio",
-    "model_description": "Predict only mel spectrogram with r=2",
+    "model_name": "TTS-tacotron2",
+    "model_description": "",
 
     "audio":{
         "audio_processor": "audio",     // to use dictate different audio processors, if available.
@@ -22,7 +22,13 @@
         "mel_fmax": 7600        // maximum freq level for mel-spec. Tune for dataset!!
     },
 
-    "embedding_size": 256,
+    "model": {
+        "embedding_size": 256,
+        "post_conv_stack_size":256,
+        "decoder_lstm_size":512,
+        "decoder_prenet_size":128,
+        "atten_size":128
+    },
     "text_cleaner": "english_cleaners",
     "epochs": 1000,
     "lr": 0.0015,
@@ -36,8 +42,8 @@
     "print_step": 10,
 
     "run_eval": true,
-    "meta_file_train": "tts_meta_data.csv",
-    "meta_file_val": "tts_meta_data_val.csv",
+    "meta_file_train": "tts_metadata.csv",
+    "meta_file_val": "tts_metadata_val.csv",
     "data_loader": "TTSDatasetMemory",
     "dataset": "tts_cache",
     "min_seq_len": 0,

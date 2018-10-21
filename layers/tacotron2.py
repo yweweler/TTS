@@ -2,8 +2,9 @@
 # TODO: Zoneout LSTMs and Dropout Convs
 import torch
 from torch import nn
-from .attention import AttentionRNNCell
-from .custom_layers import ZoneOutCell
+from .attention import AttentionCell
+
+# from .custom_layers import ZoneOutCell
 
 
 class Prenet(nn.Module):
@@ -82,9 +83,10 @@ class BatchNormConv1d(nn.Module):
     def forward(self, x):
         x = self.padder(x)
         x = self.conv1d(x)
+        x = self.bn(x)
         if self.activation is not None:
             x = self.activation(x)
-        return self.bn(x)
+        return x
 
 
 class EncoderConvStack(nn.Module):
@@ -105,7 +107,7 @@ class EncoderConvStack(nn.Module):
                     kernel_size=kernel_size,
                     stride=self.stride,
                     padding=self.padding,
-                    activation = nn.ReLU)
+                    activation=nn.ReLU)
             else:
                 layer = BatchNormConv1d(
                     in_channels=out_channels,
@@ -113,7 +115,7 @@ class EncoderConvStack(nn.Module):
                     kernel_size=kernel_size,
                     stride=self.stride,
                     padding=self.padding,
-                    activation = nn.ReLU)
+                    activation=nn.ReLU)
             self.layers.append(layer)
         self.layers = nn.ModuleList(self.layers)
 
@@ -133,7 +135,8 @@ class Encoder(nn.Module):
         super(Encoder, self).__init__()
         self.in_features = in_features
         self.out_features = in_features
-        self.conv_stack = EncoderConvStack(in_channels=in_features, out_channels=in_features)
+        self.conv_stack = EncoderConvStack(
+            in_channels=in_features, out_channels=in_features)
         self.lstm = nn.LSTM(
             in_features,
             in_features // 2,
@@ -151,6 +154,7 @@ class Encoder(nn.Module):
             - outputs: batch x time x in_features
         """
         z = self.conv_stack(inputs)
+        self.lstm.flatten_parameters()
         out = self.lstm(z)
         return out[0]
 
@@ -203,7 +207,6 @@ class PostConvStack(nn.Module):
         return z
 
 
-
 class Decoder(nn.Module):
     r"""Decoder module.
 
@@ -213,31 +216,36 @@ class Decoder(nn.Module):
         r (int): number of outputs per time step.
     """
 
-    def __init__(self, in_features, memory_dim, r):
+    def __init__(self, in_features, memory_dim, r, lstm_size=512, prenet_size=256, atten_size=128):
         super(Decoder, self).__init__()
         self.r = r
         self.in_features = in_features
         self.max_decoder_steps = 500
         self.memory_dim = memory_dim
+        self.lstm_size = lstm_size
+        self.prenet_size = prenet_size
+        self.atten_size = atten_size
         # memory -> |Prenet| -> processed_memory
-        self.prenet = Prenet(memory_dim * r, out_features=[256, 256], dropout=0.5)
+        self.prenet = Prenet(
+            memory_dim * r, out_features=[prenet_size, prenet_size], dropout=0.5)
         # (context(t-1), processed_memory(t)) -> |Attention| -> attention, context(t), rnn_hidden
-        self.attention_rnn = AttentionRNNCell(
-            out_dim=128,
-            rnn_dim=1024,
+        self.attention_rnn = AttentionCell(
+            input_dim=lstm_size,
+            atten_dim=atten_size,
             annot_dim=in_features,
-            memory_dim=1024,
             align_model='ls')
+
         # (processed_memory | attention context) -> |Linear| -> decoder_RNN_input
         # self.project_to_decoder_in = nn.Linear(256 + in_features, 256)
         # (context(t), processed_memory) -> |RNN| -> RNN_state
-        self.decoder_rnn = ZoneOutCell(nn.LSTMCell(512 + 256, 1024), zoneout_prob=0.1)
+        self.decoder_rnns = nn.ModuleList([
+            nn.LSTMCell(in_features + prenet_size, lstm_size),
+            nn.LSTMCell(lstm_size, lstm_size)
+        ])
         # RNN_state -> |Linear| -> mel_spec
-        self.proj_to_mel = nn.Linear(1024 + in_features, memory_dim * r)
+        self.proj_to_mel = nn.Linear(lstm_size + in_features, memory_dim * r)
         self.stopnet = nn.Sequential(
-            nn.Linear(1024 + in_features, 1, bias=False),
-            nn.Sigmoid()
-        )
+            nn.Linear(lstm_size + in_features, 1, bias=False), nn.Sigmoid())
 
     def forward(self, inputs, memory=None, mask=None):
         """
@@ -271,12 +279,14 @@ class Decoder(nn.Module):
         # go frame as zeros matrix
         initial_memory = inputs.data.new(B, self.memory_dim * self.r).zero_()
         # decoder states
-        attention_rnn_states = [inputs.data.new(B, 1024).zero_(), inputs.data.new(B, 1024).zero_()]
-        decoder_rnn_states = [inputs.data.new(B, 1024).zero_(), inputs.data.new(B, 1024).zero_()] 
+        decoder_rnns_states = [[
+            inputs.data.new(B, self.lstm_size).zero_(),
+            inputs.data.new(B, self.lstm_size).zero_()
+        ], [
+            inputs.data.new(B, self.lstm_size).zero_(),
+            inputs.data.new(B, self.lstm_size).zero_()
+        ]]
         current_context_vec = inputs.data.new(B, self.in_features).zero_()
-        # attention states
-        attention = inputs.data.new(B, T).zero_()
-        attention_cum = inputs.data.new(B, T).zero_()
         # Time first (T_decoder, B, memory_dim)
         if memory is not None:
             memory = memory.transpose(0, 1)
@@ -293,22 +303,24 @@ class Decoder(nn.Module):
                     memory_input = memory[t - 1]
             # Prenet
             processed_memory = self.prenet(memory_input)
-            # Attention RNN
+            # Decoder RNNs
+            decoder_rnns_input = torch.cat(
+                (processed_memory, current_context_vec), -1)
+            decoder_rnns_output = decoder_rnns_input
+            for idx, layer in enumerate(self.decoder_rnns):
+                decoder_rnns_output, decoder_rnns_cell = layer(
+                    decoder_rnns_output, decoder_rnns_states[idx])
+                decoder_rnns_states[idx][0] = decoder_rnns_output
+                decoder_rnns_states[idx][1] = decoder_rnns_cell
+            # Attention
             attention_cat = torch.cat(
                 (attention.unsqueeze(1), attention_cum.unsqueeze(1)), dim=1)
-            attention_rnn_states, current_context_vec, attention = self.attention_rnn(
-                decoder_rnn_states[0], current_context_vec, attention_rnn_states,
-                inputs, attention_cat, mask)
+            current_context_vec, attention = self.attention_rnn(
+                decoder_rnns_output, inputs, attention_cat, mask)
             attention_cum += attention
-            attention_rnn_output = attention_rnn_states[0]
-            # Concat RNN output and attention context vector
-            decoder_rnn_input = torch.cat((processed_memory, current_context_vec), -1)
-            # Pass through the decoder RNNs
-            decoder_rnn_states = self.decoder_rnn(decoder_rnn_input, decoder_rnn_states)
-            decoder_rnn_output = decoder_rnn_states[0]
             # predict mel vectors from decoder vectors
             decoder_proj_input = torch.cat(
-                (decoder_rnn_output, current_context_vec), dim=1)
+                (decoder_rnns_output, current_context_vec), dim=1)
             output = self.proj_to_mel(decoder_proj_input)
             # predict stop token
             stop_token = self.stopnet(decoder_proj_input)

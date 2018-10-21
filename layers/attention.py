@@ -54,7 +54,7 @@ class LocationSensitiveAttention(nn.Module):
                 stride=1,
                 padding=0,
                 bias=False))
-        self.loc_linear = nn.Linear(filters, attn_dim)
+        self.loc_linear = nn.Linear(filters, attn_dim, bias=False)
         self.query_layer = nn.Linear(query_dim, attn_dim, bias=False)
         self.annot_layer = nn.Linear(annot_dim, attn_dim, bias=False)
         self.v = nn.Linear(attn_dim, 1, bias=True)
@@ -80,6 +80,60 @@ class LocationSensitiveAttention(nn.Module):
         return alignment.squeeze(-1)
 
 
+
+class AttentionCell(nn.Module):
+    def __init__(self, input_dim, atten_dim, annot_dim, align_model):
+        r"""
+        General Attention RNN wrapper
+
+        Args:
+            input_dim (int): input vector feature dimension.
+            out_dim (int): context vector feature dimension.
+            annot_dim (int): annotation vector feature dimension.
+            align_model (str): 'b' for Bahdanau, 'ls' Location Sensitive alignment.
+        """
+        super(AttentionCell, self).__init__()
+        self.align_model = align_model
+        # pick bahdanau or location sensitive attention
+        if align_model == 'b':
+            self.alignment_model = BahdanauAttention(annot_dim, input_dim,
+                                                     atten_dim)
+        if align_model == 'ls':
+            self.alignment_model = LocationSensitiveAttention(
+                annot_dim, input_dim, atten_dim)
+        else:
+            raise RuntimeError(" Wrong alignment model name: {}. Use\
+                'b' (Bahdanau) or 'ls' (Location Sensitive).".format(
+                align_model))
+
+    def forward(self, input, annots, atten, mask):
+        """
+        Shapes:
+            - input: (batch, dim)
+            - annots: (batch, max_time, annot_dim)
+            - atten: (batch, 2, max_time)
+            - mask: (batch,)
+        """
+        # Alignment
+        # (batch, max_time)
+        # e_{ij} = a(s_{i-1}, h_j)
+        if self.align_model is 'b':
+            alignment = self.alignment_model(annots, input)
+        else:
+            alignment = self.alignment_model(annots, input, atten)
+        if mask is not None:
+            input = mask.view(input.size(0), -1)
+            alignment.masked_fill_(1 - mask, -float("inf"))
+        # Normalize context weight
+        # alignment = F.softmax(alignment, dim=-1)
+        alignment  = torch.sigmoid(alignment) / torch.sigmoid(alignment).sum(dim=1).unsqueeze(1)
+        # Attention context vector
+        # (batch, 1, dim)
+        # c_i = \sum_{j=1}^{T_x} \alpha_{ij} h_j
+        context = torch.bmm(alignment.unsqueeze(1), annots)
+        context = context.squeeze(1)
+        return context, alignment
+
 class AttentionRNNCell(nn.Module):
     def __init__(self, out_dim, rnn_dim, annot_dim, memory_dim, align_model):
         r"""
@@ -94,7 +148,7 @@ class AttentionRNNCell(nn.Module):
         """
         super(AttentionRNNCell, self).__init__()
         self.align_model = align_model
-        self.rnn_cell = ZoneOutCell(nn.LSTMCell(annot_dim + memory_dim, rnn_dim), zoneout_prob=0.1)
+        self.rnn_cell = nn.LSTMCell(annot_dim + memory_dim, rnn_dim)
         # pick bahdanau or location sensitive attention
         if align_model == 'b':
             self.alignment_model = BahdanauAttention(annot_dim, rnn_dim,

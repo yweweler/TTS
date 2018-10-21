@@ -319,7 +319,7 @@ def main(args):
     else:
         val_loader = None
 
-    model = Tacotron2(c.embedding_size, ap.num_mels, c.r)
+    model = Tacotron2(ap.num_mels, c.r, **c.model)
     print(" | > Num output units : {}".format(ap.num_freq), flush=True)
 
     optimizer = optim.Adam(model.parameters(), lr=c.lr, weight_decay=0)

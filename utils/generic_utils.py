@@ -33,12 +33,12 @@ def load_config(config_path):
 
 def get_commit_hash():
     """https://stackoverflow.com/questions/14989858/get-the-current-git-hash-in-a-python-script"""
-    try:
-        subprocess.check_output(['git', 'diff-index', '--quiet',
-                                 'HEAD'])  # Verify client is clean
-    except:
-        raise RuntimeError(
-            " !! Commit before training to get the commit hash.")
+    # try:
+    #     subprocess.check_output(['git', 'diff-index', '--quiet',
+    #                              'HEAD'])  # Verify client is clean
+    # except:
+    #     raise RuntimeError(
+    #         " !! Commit before training to get the commit hash.")
     commit = subprocess.check_output(['git', 'rev-parse', '--short',
                                       'HEAD']).decode().strip()
     print(' > Git Hash: {}'.format(commit))
