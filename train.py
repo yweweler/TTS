@@ -33,38 +33,6 @@ print(" > Using CUDA: ", use_cuda)
 print(" > Number of GPUs: ", torch.cuda.device_count())
 
 
-def log_cuda_statistics(current_step):
-    # Log GPU memory statistics for each available GPU.
-    n_devices = torch.cuda.device_count()
-    for device_id in range(n_devices):
-        # Query the maximum GPU memory usage by tensors in bytes.
-        bytes_max_memory_allocated = torch.cuda.max_memory_allocated(
-            device=device_id)
-
-        # Query the current GPU memory usage by tensors in bytes.
-        bytes_memory_allocated = torch.cuda.memory_allocated(device=device_id)
-
-        # Query the maximum GPU memory managed by the caching allocator in bytes.
-        bytes_max_memory_cached = torch.cuda.max_memory_cached(device=device_id)
-
-        # Query the current GPU memory managed by the caching allocator in bytes.
-        bytes_memory_cached = torch.cuda.memory_cached(device=device_id)
-
-        base = 1024**2
-
-        tb.add_scalar('cuda/gpu_{}/max_memory_allocated'.format(device_id),
-                      bytes_max_memory_allocated / base, current_step)
-
-        tb.add_scalar('cuda/gpu_{}/memory_allocated'.format(device_id),
-                      bytes_memory_allocated / base, current_step)
-
-        tb.add_scalar('cuda/gpu_{}/max_memory_cached'.format(device_id),
-                      bytes_max_memory_cached / base, current_step)
-
-        tb.add_scalar('cuda/gpu_{}/memory_cached'.format(device_id),
-                      bytes_memory_cached / base, current_step)
-
-
 def setup_loader(is_val=False):
     global ap
     if is_val and not c.run_eval:
