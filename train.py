@@ -12,6 +12,7 @@ import torch.nn as nn
 from torch import optim
 from torch.utils.data import DataLoader
 from tensorboardX import SummaryWriter
+import tensorboardX as tb
 
 from utils.generic_utils import (
     remove_experiment_folder, create_experiment_folder, save_checkpoint,
@@ -30,6 +31,38 @@ torch.manual_seed(1)
 use_cuda = torch.cuda.is_available()
 print(" > Using CUDA: ", use_cuda)
 print(" > Number of GPUs: ", torch.cuda.device_count())
+
+
+def log_cuda_statistics(current_step):
+    # Log GPU memory statistics for each available GPU.
+    n_devices = torch.cuda.device_count()
+    for device_id in range(n_devices):
+        # Query the maximum GPU memory usage by tensors in bytes.
+        bytes_max_memory_allocated = torch.cuda.max_memory_allocated(
+            device=device_id)
+
+        # Query the current GPU memory usage by tensors in bytes.
+        bytes_memory_allocated = torch.cuda.memory_allocated(device=device_id)
+
+        # Query the maximum GPU memory managed by the caching allocator in bytes.
+        bytes_max_memory_cached = torch.cuda.max_memory_cached(device=device_id)
+
+        # Query the current GPU memory managed by the caching allocator in bytes.
+        bytes_memory_cached = torch.cuda.memory_cached(device=device_id)
+
+        base = 1024**2
+
+        tb.add_scalar('cuda/gpu_{}/max_memory_allocated'.format(device_id),
+                      bytes_max_memory_allocated / base, current_step)
+
+        tb.add_scalar('cuda/gpu_{}/memory_allocated'.format(device_id),
+                      bytes_memory_allocated / base, current_step)
+
+        tb.add_scalar('cuda/gpu_{}/max_memory_cached'.format(device_id),
+                      bytes_max_memory_cached / base, current_step)
+
+        tb.add_scalar('cuda/gpu_{}/memory_cached'.format(device_id),
+                      bytes_memory_cached / base, current_step)
 
 
 def setup_loader(is_val=False):
@@ -72,6 +105,19 @@ def train(model, criterion, criterion_st, optimizer, optimizer_st,
     avg_mel_loss = 0
     avg_stop_loss = 0
     avg_step_time = 0
+
+    # Log GPU memory statistics for each available GPU.
+    gpu_stats = dict()
+    if use_cuda:
+        n_devices = torch.cuda.device_count()
+        for device_id in range(n_devices):
+            gpu_stats[device_id] = {
+                "max_memory_allocated": 0,
+                "memory_allocated": 0,
+                "max_memory_cached": 0,
+                "memory_cached": 0,
+            }
+
     print(" | > Epoch {}/{}".format(epoch, c.epochs), flush=True)
     n_priority_freq = int(
         3000 / (c.audio['sample_rate'] * 0.5) * c.audio['num_freq'])
@@ -177,6 +223,26 @@ def train(model, criterion, criterion_st, optimizer, optimizer_st,
         avg_stop_loss += stop_loss.item()
         avg_step_time += step_time
 
+        if use_cuda:
+            # Update GPU memory statistics for all GPUs.
+            n_devices = torch.cuda.device_count()
+            for device_id in range(n_devices):
+                # Query the maximum GPU memory usage by tensors in bytes.
+                bytes_max_memory_allocated = torch.cuda.max_memory_allocated(device=device_id)
+                gpu_stats[device_id]["max_memory_allocated"]=bytes_max_memory_allocated
+
+                # Query the current GPU memory usage by tensors in bytes.
+                bytes_memory_allocated = torch.cuda.memory_allocated(device=device_id)
+                gpu_stats[device_id]["memory_allocated"]=bytes_memory_allocated
+
+                # Query the maximum GPU memory managed by the caching allocator in bytes.
+                bytes_max_memory_cached = torch.cuda.max_memory_cached(device=device_id)
+                gpu_stats[device_id]["max_memory_cached"]=bytes_max_memory_cached
+
+                # Query the current GPU memory managed by the caching allocator in bytes.
+                bytes_memory_cached = torch.cuda.memory_cached(device=device_id)
+                gpu_stats[device_id]["memory_cached"]=bytes_memory_cached
+
         # Plot Training Iter Stats
         iter_stats = {"loss_posnet": linear_loss.item(),
                       "loss_decoder": mel_loss.item(),
@@ -185,6 +251,10 @@ def train(model, criterion, criterion_st, optimizer, optimizer_st,
                       "grad_norm_st": grad_norm_st,
                       "step_time": step_time}
         tb_logger.tb_train_iter_stats(current_step, iter_stats)
+
+        # Log GPU memory statistics for all GPUs.
+        if use_cuda:
+            tb_logger.tb_train_gpu_stats(current_step, gpu_stats)
 
         if current_step % c.save_step == 0:
             if c.checkpoint:
@@ -306,6 +376,11 @@ def evaluate(model, criterion, criterion_st, ap, current_step):
                 avg_linear_loss += float(linear_loss.item())
                 avg_mel_loss += float(mel_loss.item())
                 avg_stop_loss += stop_loss.item()
+
+
+            # if use_cuda:
+            #     # Log GPU memory statistics for each available GPU.
+            #     log_cuda_statistics(current_step)
 
             # Diagnostic visualizations
             idx = np.random.randint(mel_input.shape[0])
@@ -489,6 +564,6 @@ if __name__ == '__main__':
         except SystemExit:
             os._exit(0)
     except Exception:
-        remove_experiment_folder(OUT_PATH)
+        # remove_experiment_folder(OUT_PATH)
         traceback.print_exc()
         sys.exit(1)
