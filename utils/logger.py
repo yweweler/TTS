@@ -68,6 +68,10 @@ class Logger(object):
 
     def tb_eval_audios(self, step, audios, sample_rate):
         self.dict_to_tb_audios("EvalAudios", audios, step, sample_rate)
+
+    def tb_eval_gpu_stats(self, step, stats):
+        for device_id in stats:
+            self.dict_to_tb_scalar("EvalGPUStats/{}".format(device_id), stats[device_id], step)
     
     def tb_test_audios(self, step, audios, sample_rate):
         self.dict_to_tb_audios("TestAudios", audios, step, sample_rate)

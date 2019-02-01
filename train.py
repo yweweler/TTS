@@ -312,6 +312,19 @@ def evaluate(model, criterion, criterion_st, ap, current_step):
     avg_linear_loss = 0
     avg_mel_loss = 0
     avg_stop_loss = 0
+
+    # Log GPU memory statistics for each available GPU.
+    gpu_stats = dict()
+    if use_cuda:
+        n_devices = torch.cuda.device_count()
+        for device_id in range(n_devices):
+            gpu_stats[device_id] = {
+                "max_memory_allocated": 0,
+                "memory_allocated": 0,
+                "max_memory_cached": 0,
+                "memory_cached": 0,
+            }
+
     print(" | > Validation")
     test_sentences = [
         "It took me quite a long time to develop a voice, and now that I have it I'm not going to be silent.",
@@ -377,10 +390,28 @@ def evaluate(model, criterion, criterion_st, ap, current_step):
                 avg_mel_loss += float(mel_loss.item())
                 avg_stop_loss += stop_loss.item()
 
+            if use_cuda:
+                # Update GPU memory statistics for all GPUs.
+                n_devices = torch.cuda.device_count()
+                for device_id in range(n_devices):
+                    # Query the maximum GPU memory usage by tensors in bytes.
+                    bytes_max_memory_allocated = torch.cuda.max_memory_allocated(device=device_id)
+                    gpu_stats[device_id]["max_memory_allocated"] = bytes_max_memory_allocated
 
-            # if use_cuda:
-            #     # Log GPU memory statistics for each available GPU.
-            #     log_cuda_statistics(current_step)
+                    # Query the current GPU memory usage by tensors in bytes.
+                    bytes_memory_allocated = torch.cuda.memory_allocated(device=device_id)
+                    gpu_stats[device_id]["memory_allocated"] = bytes_memory_allocated
+
+                    # Query the maximum GPU memory managed by the caching allocator in bytes.
+                    bytes_max_memory_cached = torch.cuda.max_memory_cached(device=device_id)
+                    gpu_stats[device_id]["max_memory_cached"] = bytes_max_memory_cached
+
+                    # Query the current GPU memory managed by the caching allocator in bytes.
+                    bytes_memory_cached = torch.cuda.memory_cached(device=device_id)
+                    gpu_stats[device_id]["memory_cached"] = bytes_memory_cached
+
+                # Log GPU memory statistics for all GPUs.
+                tb_logger.tb_eval_gpu_stats(current_step, gpu_stats)
 
             # Diagnostic visualizations
             idx = np.random.randint(mel_input.shape[0])
