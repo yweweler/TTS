@@ -191,6 +191,15 @@ def train(model, criterion, criterion_st, optimizer, optimizer_st,
         avg_stop_loss += stop_loss.item()
         avg_step_time += step_time
 
+        # Plot Training Iter Stats
+        iter_stats = {"loss_posnet": linear_loss.item(),
+                      "loss_decoder": mel_loss.item(),
+                      "lr": current_lr,
+                      "grad_norm": grad_norm,
+                      "grad_norm_st": grad_norm_st,
+                      "step_time": step_time}
+        tb_logger.tb_train_iter_stats(current_step, iter_stats)
+
         if use_cuda:
             # Update GPU memory statistics for all GPUs.
             n_devices = torch.cuda.device_count()
@@ -211,18 +220,8 @@ def train(model, criterion, criterion_st, optimizer, optimizer_st,
                 bytes_memory_cached = torch.cuda.memory_cached(device=device_id)
                 gpu_stats[device_id]["memory_cached"]=bytes_memory_cached
 
-        # Plot Training Iter Stats
-        iter_stats = {"loss_posnet": linear_loss.item(),
-                      "loss_decoder": mel_loss.item(),
-                      "lr": current_lr,
-                      "grad_norm": grad_norm,
-                      "grad_norm_st": grad_norm_st,
-                      "step_time": step_time}
-        tb_logger.tb_train_iter_stats(current_step, iter_stats)
-
-        # Log GPU memory statistics for all GPUs.
-        if use_cuda:
-            tb_logger.tb_train_gpu_stats(current_step, gpu_stats)
+                # Log GPU memory statistics for all GPUs.
+                tb_logger.tb_train_gpu_stats(current_step, gpu_stats)
 
         if current_step % c.save_step == 0:
             if c.checkpoint:
